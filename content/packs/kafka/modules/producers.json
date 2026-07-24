@@ -1,0 +1,353 @@
+{
+  "id": "producers",
+  "title": { "en": "Producers", "fr": "Producteurs" },
+  "tagline": {
+    "en": "Acks, idempotence, partitioning, batching",
+    "fr": "Acks, idempotence, partitionnement, batching"
+  },
+  "icon": "📤",
+  "lessons": [
+    {
+      "id": "acks-durability",
+      "title": { "en": "Acks & durability", "fr": "Acks & durabilité" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "acks controls how many replicas must confirm a write before the producer considers it successful. acks=0 waits for nothing (fire and forget, fastest, can lose data silently). acks=1 waits only for the partition leader's local log write. acks=all (equivalent to acks=-1) waits for every replica currently in the ISR, governed by min.insync.replicas.",
+            "fr": "acks contrôle combien de répliques doivent confirmer une écriture avant que le producteur la considère réussie. acks=0 n'attend rien (fire and forget, le plus rapide, peut perdre des données silencieusement). acks=1 attend seulement l'écriture locale du leader de partition. acks=all (équivalent à acks=-1) attend toutes les répliques actuellement dans l'ISR, gouverné par min.insync.replicas."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "acks=all is only as durable as min.insync.replicas allows: with min.insync.replicas=1, acks=all only waits for the leader, exactly like acks=1, giving a false sense of safety.",
+            "fr": "acks=all n'est durable qu'à la hauteur de min.insync.replicas : avec min.insync.replicas=1, acks=all n'attend que le leader, exactement comme acks=1, donnant un faux sentiment de sécurité."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "Since Kafka 3.0, the client defaults are acks=all with enable.idempotence=true: durability and duplicate-safety are opt-out, not opt-in.",
+            "fr": "Depuis Kafka 3.0, les valeurs par défaut du client sont acks=all avec enable.idempotence=true : la durabilité et la protection contre les doublons sont opt-out, pas opt-in."
+          }
+        }
+      ]
+    },
+    {
+      "id": "idempotence-retries",
+      "title": { "en": "Idempotent producer", "fr": "Producteur idempotent" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "With enable.idempotence=true, each producer session gets a unique Producer ID (PID) from the broker, and tags every batch with a per-partition sequence number. If a retry resends a batch the broker already has (because the original ack was lost, not the write), the broker recognizes the sequence number and drops the duplicate instead of appending it again.",
+            "fr": "Avec enable.idempotence=true, chaque session de producteur reçoit du broker un Producer ID (PID) unique, et étiquette chaque batch avec un numéro de séquence par partition. Si une retentative renvoie un batch que le broker a déjà (parce que l'accusé de réception original a été perdu, pas l'écriture), le broker reconnaît le numéro de séquence et rejette le doublon au lieu de l'ajouter à nouveau."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "Idempotence removes duplicates caused by producer-side retries within a single partition, for the lifetime of one producer session. It does not make cross-partition or cross-topic writes atomic; that needs the transactional producer (separate module).",
+            "fr": "L'idempotence supprime les doublons causés par les retentatives côté producteur au sein d'une seule partition, pendant la durée de vie d'une session de producteur. Elle ne rend pas atomiques des écritures multi-partitions ou multi-topics ; cela nécessite le producteur transactionnel (module séparé)."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Idempotence is per producer session: if the producer process restarts, it gets a new PID, and the broker can no longer deduplicate against writes made under the old PID.",
+            "fr": "L'idempotence est valable par session de producteur : si le process producteur redémarre, il obtient un nouveau PID, et le broker ne peut plus dédupliquer par rapport aux écritures faites sous l'ancien PID."
+          }
+        },
+        {
+          "type": "code",
+          "code": "enable.idempotence=true\nmax.in.flight.requests.per.connection=5\nacks=all",
+          "caption": {
+            "en": "Default-safe combination: up to 5 requests in flight, order preserved via per-partition sequence numbers even if a retry lands out of send order.",
+            "fr": "Combinaison sûre par défaut : jusqu'à 5 requêtes en vol, ordre préservé via les numéros de séquence par partition même si une retentative arrive dans un ordre différent de l'envoi."
+          }
+        }
+      ]
+    },
+    {
+      "id": "partitioning-strategy",
+      "title": { "en": "Partitioning strategy", "fr": "Stratégie de partitionnement" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "The default partitioner hashes the key (murmur2) modulo the partition count for keyed records. For null-key records, since Kafka 2.4, it uses a sticky strategy: it fills one batch per partition before moving to the next, instead of a naive per-record round-robin, which produces fewer, fuller batches.",
+            "fr": "Le partitioner par défaut hash la clé (murmur2) modulo le nombre de partitions pour les records avec clé. Pour les records sans clé, depuis Kafka 2.4, il utilise une stratégie \"sticky\" : il remplit un batch par partition avant de passer à la suivante, au lieu d'un round-robin naïf record par record, ce qui produit des batchs moins nombreux et mieux remplis."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "A custom Partitioner implementation can override this entirely, for example to route by a business dimension other than the record key, or to implement partition affinity for hot keys.",
+            "fr": "Une implémentation Partitioner personnalisée peut entièrement redéfinir ce comportement, par exemple pour router selon une dimension métier autre que la clé du record, ou pour implémenter une affinité de partition pour des clés à forte charge."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "If uniform load matters more than key-based routing, sending a null key with the sticky partitioner usually distributes load more evenly than a poorly chosen key with skewed cardinality.",
+            "fr": "Si une charge uniforme compte plus qu'un routage par clé, envoyer une clé nulle avec le partitioner sticky distribue en général la charge plus uniformément qu'une clé mal choisie avec une cardinalité déséquilibrée."
+          }
+        }
+      ]
+    },
+    {
+      "id": "batching-compression",
+      "title": { "en": "Batching & compression", "fr": "Batching & compression" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "linger.ms is how long the producer waits, after the first record of a batch, to accumulate more records before sending; batch.size is the maximum bytes per partition batch. Whichever limit is hit first triggers the send, so linger.ms=0 (the default) still batches under load, just not by waiting on purpose.",
+            "fr": "linger.ms est le temps que le producteur attend, après le premier record d'un batch, pour en accumuler d'autres avant d'envoyer ; batch.size est le nombre maximal d'octets par batch de partition. La première limite atteinte déclenche l'envoi, donc linger.ms=0 (la valeur par défaut) batch quand même sous charge, simplement pas en attendant volontairement."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "buffer.memory bounds the total memory the producer can use to hold unsent batches across all partitions. If producing outpaces sending for longer than max.block.ms, send() blocks and then throws a TimeoutException once the buffer stays full.",
+            "fr": "buffer.memory borne la mémoire totale que le producteur peut utiliser pour retenir des batchs non envoyés, toutes partitions confondues. Si la production dépasse la vitesse d'envoi plus longtemps que max.block.ms, send() bloque puis lève une TimeoutException une fois le buffer resté plein."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "compression.type trades CPU for network and disk: lz4 and snappy favor speed, gzip and zstd favor ratio, with zstd usually winning on both ratio and CPU cost among the high-ratio options.",
+            "fr": "compression.type échange du CPU contre du réseau et du disque : lz4 et snappy privilégient la vitesse, gzip et zstd privilégient le taux de compression, zstd l'emportant généralement à la fois sur le taux et le coût CPU parmi les options à fort taux."
+          }
+        }
+      ]
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "fc-acks0",
+      "front": { "en": "What does acks=0 mean?", "fr": "Que signifie acks=0 ?" },
+      "back": {
+        "en": "The producer does not wait for any broker acknowledgment; highest throughput, but messages can be lost silently.",
+        "fr": "Le producteur n'attend aucun accusé de réception du broker ; débit maximal, mais les messages peuvent être perdus silencieusement."
+      }
+    },
+    {
+      "id": "fc-acks1",
+      "front": { "en": "What does acks=1 mean?", "fr": "Que signifie acks=1 ?" },
+      "back": {
+        "en": "The producer waits only for the partition leader's local write; data can be lost if the leader crashes before followers replicate it.",
+        "fr": "Le producteur n'attend que l'écriture locale du leader de partition ; les données peuvent être perdues si le leader crashe avant que les followers ne les répliquent."
+      }
+    },
+    {
+      "id": "fc-acks-all",
+      "front": { "en": "What does acks=all really wait for?", "fr": "Qu'attend réellement acks=all ?" },
+      "back": {
+        "en": "Every replica currently in the ISR, as required by min.insync.replicas, not literally every replica of the partition.",
+        "fr": "Toutes les répliques actuellement dans l'ISR, selon ce qu'exige min.insync.replicas, pas littéralement toutes les répliques de la partition."
+      }
+    },
+    {
+      "id": "fc-defaults-since-3",
+      "front": { "en": "Since which version are acks=all and idempotence the producer defaults?", "fr": "Depuis quelle version acks=all et l'idempotence sont-ils les valeurs par défaut du producteur ?" },
+      "back": {
+        "en": "Kafka 3.0.",
+        "fr": "Kafka 3.0."
+      }
+    },
+    {
+      "id": "fc-idempotence-guarantee",
+      "front": { "en": "What does enable.idempotence=true guarantee?", "fr": "Que garantit enable.idempotence=true ?" },
+      "back": {
+        "en": "No duplicate records within a partition caused by producer retries, for the duration of one producer session (via a Producer ID and per-partition sequence numbers).",
+        "fr": "Aucun record dupliqué au sein d'une partition à cause des retentatives du producteur, pendant la durée d'une session de producteur (via un Producer ID et des numéros de séquence par partition)."
+      }
+    },
+    {
+      "id": "fc-sequence-number",
+      "front": { "en": "What does the broker do with a producer's per-partition sequence number?", "fr": "Que fait le broker avec le numéro de séquence par partition d'un producteur ?" },
+      "back": {
+        "en": "It tracks the last one written per (PID, partition); a retry carrying an already-seen number is deduplicated instead of appended again.",
+        "fr": "Il suit le dernier écrit par (PID, partition) ; une retentative portant un numéro déjà vu est dédupliquée au lieu d'être ajoutée à nouveau."
+      }
+    },
+    {
+      "id": "fc-idempotence-scope",
+      "front": { "en": "Does idempotence make multi-partition writes atomic?", "fr": "L'idempotence rend-elle atomiques les écritures multi-partitions ?" },
+      "back": {
+        "en": "No. It only deduplicates retries within a single partition; cross-partition atomicity needs the transactional producer.",
+        "fr": "Non. Elle ne fait que dédupliquer les retentatives au sein d'une seule partition ; l'atomicité multi-partitions nécessite le producteur transactionnel."
+      }
+    },
+    {
+      "id": "fc-max-in-flight",
+      "front": { "en": "How can order be preserved with up to 5 in-flight requests per connection under idempotence?", "fr": "Comment l'ordre est-il préservé avec jusqu'à 5 requêtes en vol par connexion sous idempotence ?" },
+      "back": {
+        "en": "The broker enforces per-partition sequence numbers, so it can detect and correctly order or reject out-of-order arrivals even with several requests in flight.",
+        "fr": "Le broker impose des numéros de séquence par partition, ce qui lui permet de détecter et d'ordonner correctement, ou de rejeter, des arrivées désordonnées même avec plusieurs requêtes en vol."
+      }
+    },
+    {
+      "id": "fc-linger-ms",
+      "front": { "en": "What does linger.ms control?", "fr": "Que contrôle linger.ms ?" },
+      "back": {
+        "en": "How long the producer waits to accumulate more records into a batch before sending, trading latency for larger batches.",
+        "fr": "Combien de temps le producteur attend pour accumuler plus de records dans un batch avant d'envoyer, échangeant de la latence contre des batchs plus gros."
+      }
+    },
+    {
+      "id": "fc-batch-size",
+      "front": { "en": "What does batch.size control?", "fr": "Que contrôle batch.size ?" },
+      "back": {
+        "en": "The maximum bytes buffered per partition batch; whichever of linger.ms or batch.size is hit first triggers the send.",
+        "fr": "Le nombre maximal d'octets accumulés par batch de partition ; la première limite atteinte entre linger.ms et batch.size déclenche l'envoi."
+      }
+    },
+    {
+      "id": "fc-compression-ratio",
+      "front": { "en": "Which compression codec usually gives the best ratio among the common Kafka options?", "fr": "Quel codec de compression donne en général le meilleur taux parmi les options courantes de Kafka ?" },
+      "back": {
+        "en": "zstd, generally beating gzip on both ratio and CPU cost; lz4 and snappy favor speed instead.",
+        "fr": "zstd, qui bat en général gzip à la fois sur le taux et le coût CPU ; lz4 et snappy privilégient plutôt la vitesse."
+      }
+    },
+    {
+      "id": "fc-sticky-partitioner",
+      "front": { "en": "What changed with the sticky partitioner for null-key records (since Kafka 2.4)?", "fr": "Qu'est-ce qui a changé avec le partitioner sticky pour les records sans clé (depuis Kafka 2.4) ?" },
+      "back": {
+        "en": "Instead of round-robin per record, it fills one batch per partition before switching, producing fewer, fuller batches.",
+        "fr": "Au lieu d'un round-robin par record, il remplit un batch par partition avant de changer, produisant des batchs moins nombreux et mieux remplis."
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-acks-risk",
+      "kind": "mcq",
+      "prompt": {
+        "en": "Which acks setting risks losing an already-acknowledged record if the partition leader crashes right after acknowledging, before followers replicate it?",
+        "fr": "Quel réglage acks risque de perdre un record déjà acquitté si le leader de partition crashe juste après l'accusé de réception, avant que les followers ne le répliquent ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "acks=0", "fr": "acks=0" } },
+        { "id": "b", "label": { "en": "acks=1", "fr": "acks=1" } },
+        { "id": "c", "label": { "en": "acks=all with min.insync.replicas=2 on a 3-replica topic", "fr": "acks=all avec min.insync.replicas=2 sur un topic à 3 répliques" } },
+        { "id": "d", "label": { "en": "None of the above", "fr": "Aucune de ces réponses" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "acks=1 only confirms the leader's local write. If the leader crashes before any follower has replicated it, the acknowledged record is gone, even though the producer believes it succeeded.",
+        "fr": "acks=1 ne confirme que l'écriture locale du leader. Si le leader crashe avant qu'un follower ne l'ait répliqué, le record acquitté a disparu, même si le producteur croit qu'il a réussi."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-fake-durability",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A topic is configured with replication.factor=3, min.insync.replicas=1, acks=all. The partition leader crashes right after acknowledging a write, before either follower has replicated it. What happens to that record?",
+        "fr": "Un topic est configuré avec replication.factor=3, min.insync.replicas=1, acks=all. Le leader de la partition crashe juste après avoir acquitté une écriture, avant qu'un des deux followers ne l'ait répliquée. Que devient ce record ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "It is guaranteed to be preserved, because acks=all was used", "fr": "Il est garanti d'être préservé, car acks=all a été utilisé" } },
+        { "id": "b", "label": { "en": "It can be lost: with min.insync.replicas=1, acks=all only waits for the leader, exactly like acks=1", "fr": "Il peut être perdu : avec min.insync.replicas=1, acks=all n'attend que le leader, exactement comme acks=1" } },
+        { "id": "c", "label": { "en": "It is automatically resent by the broker", "fr": "Il est automatiquement renvoyé par le broker" } },
+        { "id": "d", "label": { "en": "The produce call would have failed before acknowledging", "fr": "L'appel de production aurait échoué avant l'accusé de réception" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "acks=all's durability is bounded by min.insync.replicas. With it set to 1, the leader alone satisfies the requirement, so acks=all provides no more durability than acks=1 here despite the higher replication factor.",
+        "fr": "La durabilité de acks=all est bornée par min.insync.replicas. Avec cette valeur à 1, le leader seul satisfait l'exigence, donc acks=all n'apporte ici pas plus de durabilité que acks=1, malgré le facteur de réplication plus élevé."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-no-retries",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A service complains that transient network blips cause data loss even though acks=all is set. Find the bug in this producer configuration.",
+        "fr": "Un service se plaint que de brèves coupures réseau causent des pertes de données alors que acks=all est configuré. Trouvez le bug dans cette configuration de producteur."
+      },
+      "code": "acks=all\nenable.idempotence=true\nretries=0",
+      "choices": [
+        { "id": "a", "label": { "en": "enable.idempotence should be false", "fr": "enable.idempotence devrait être false" } },
+        { "id": "b", "label": { "en": "retries=0 disables the client-side retry that would otherwise recover from a transient send failure; the app sees an exception instead of a silent recovery", "fr": "retries=0 désactive la retentative côté client qui aurait sinon permis de récupérer d'un échec d'envoi transitoire ; l'application voit une exception au lieu d'une récupération silencieuse" } },
+        { "id": "c", "label": { "en": "acks=all should be acks=0 for lower latency", "fr": "acks=all devrait être acks=0 pour une latence plus faible" } },
+        { "id": "d", "label": { "en": "There is no bug, retries=0 is required with idempotence", "fr": "Il n'y a pas de bug, retries=0 est requis avec l'idempotence" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "With retries=0, any transient error (broker temporarily unreachable, leader election in progress) surfaces as a failed send instead of being retried automatically. This is not data loss inside Kafka, it is unhandled failure in the app, but the fix is the same: leave retries at its default (effectively unlimited, bounded by delivery.timeout.ms).",
+        "fr": "Avec retries=0, toute erreur transitoire (broker temporairement injoignable, élection de leader en cours) remonte comme un envoi échoué au lieu d'être retentée automatiquement. Ce n'est pas une perte de données côté Kafka, mais un échec non géré côté application ; le correctif est le même : laisser retries à sa valeur par défaut (en pratique illimitée, bornée par delivery.timeout.ms)."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-ordering-choice",
+      "kind": "mcq",
+      "prompt": {
+        "en": "You need strict per-key ordering with automatic retries on transient errors, without hand-rolling deduplication. Which configuration is correct?",
+        "fr": "Vous avez besoin d'un ordre strict par clé avec retentatives automatiques sur erreurs transitoires, sans coder vous-même de déduplication. Quelle configuration est correcte ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "acks=0, retries=0", "fr": "acks=0, retries=0" } },
+        { "id": "b", "label": { "en": "enable.idempotence=true, default retries and max.in.flight.requests.per.connection", "fr": "enable.idempotence=true, retries et max.in.flight.requests.per.connection par défaut" } },
+        { "id": "c", "label": { "en": "max.in.flight.requests.per.connection=1, enable.idempotence=false", "fr": "max.in.flight.requests.per.connection=1, enable.idempotence=false" } },
+        { "id": "d", "label": { "en": "acks=all, enable.idempotence=false", "fr": "acks=all, enable.idempotence=false" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "The idempotent producer keeps per-partition ordering safe even with several requests in flight, because the broker enforces sequence numbers; it is the modern default and avoids the throughput cost of forcing max.in.flight to 1.",
+        "fr": "Le producteur idempotent garde l'ordre par partition sûr même avec plusieurs requêtes en vol, car le broker impose des numéros de séquence ; c'est la valeur par défaut moderne, et elle évite le coût en débit de forcer max.in.flight à 1."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-null-key-batching",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A producer sends 1000 null-key records to a topic with 4 partitions, back to back, using the default (sticky) partitioner. How are they distributed?",
+        "fr": "Un producteur envoie 1000 records sans clé vers un topic à 4 partitions, coup sur coup, avec le partitioner par défaut (sticky). Comment sont-ils répartis ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Strictly one record per partition in round-robin order: 1, 2, 3, 4, 1, 2...", "fr": "Strictement un record par partition en round-robin : 1, 2, 3, 4, 1, 2..." } },
+        { "id": "b", "label": { "en": "All 1000 records land on the same, randomly chosen partition", "fr": "Les 1000 records atterrissent tous sur la même partition, choisie au hasard" } },
+        { "id": "c", "label": { "en": "Records are grouped into batches, each batch assigned to one partition, rotating across partitions as batches fill and are sent", "fr": "Les records sont regroupés en batchs, chaque batch assigné à une partition, en tournant entre les partitions au fur et à mesure que les batchs se remplissent et sont envoyés" } },
+        { "id": "d", "label": { "en": "They are split evenly by consumer group instead of partition", "fr": "Ils sont répartis équitablement par groupe de consommateurs plutôt que par partition" } }
+      ],
+      "answerId": "c",
+      "explanation": {
+        "en": "The sticky partitioner batches null-key records onto one partition at a time, switching to a new partition once a batch is sent, rather than spreading every single record round-robin, which would defeat batching.",
+        "fr": "Le partitioner sticky regroupe les records sans clé sur une partition à la fois, changeant de partition une fois un batch envoyé, plutôt que de répartir chaque record individuellement en round-robin, ce qui casserait le batching."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-tiny-buffer",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A producer sending large payloads at high throughput intermittently throws org.apache.kafka.common.errors.TimeoutException from send(). Find the bug.",
+        "fr": "Un producteur qui envoie des payloads volumineux à fort débit lève par intermittence org.apache.kafka.common.errors.TimeoutException depuis send(). Trouvez le bug."
+      },
+      "code": "buffer.memory=1024\nbatch.size=16384\nlinger.ms=5",
+      "choices": [
+        { "id": "a", "label": { "en": "linger.ms should be 0", "fr": "linger.ms devrait être 0" } },
+        { "id": "b", "label": { "en": "buffer.memory (1 KB) is far smaller than batch.size (16 KB); the producer cannot even hold one full batch, so it fills up and blocks under load until max.block.ms is exceeded", "fr": "buffer.memory (1 Ko) est bien plus petit que batch.size (16 Ko) ; le producteur ne peut même pas contenir un seul batch complet, donc il se remplit et bloque sous charge jusqu'à dépasser max.block.ms" } },
+        { "id": "c", "label": { "en": "batch.size should be smaller than buffer.memory instead", "fr": "batch.size devrait être plus petit que buffer.memory, c'est l'inverse" } },
+        { "id": "d", "label": { "en": "There is no bug, TimeoutException always means the broker is down", "fr": "Il n'y a pas de bug, TimeoutException signifie toujours que le broker est indisponible" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "buffer.memory bounds total unsent data across all partitions and must comfortably exceed batch.size, usually by orders of magnitude, to absorb bursts. At 1 KB it is smaller than a single configured batch, guaranteeing the buffer fills instantly under any real load.",
+        "fr": "buffer.memory borne les données non envoyées sur l'ensemble des partitions et doit largement dépasser batch.size, en général de plusieurs ordres de grandeur, pour absorber les pics. À 1 Ko, il est plus petit qu'un seul batch configuré, ce qui garantit que le buffer se remplit instantanément dès qu'il y a une charge réelle."
+      },
+      "difficulty": 3
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "id": "kafka",
+  "name": "Kafkex",
+  "targetVersion": "4.0",
+  "modules": [
+    {
+      "id": "fundamentals",
+      "title": { "en": "Cluster fundamentals", "fr": "Fondamentaux du cluster" },
+      "tagline": {
+        "en": "Topics, partitions, brokers, replication, ISR",
+        "fr": "Topics, partitions, brokers, réplication, ISR"
+      },
+      "icon": "🧵",
+      "status": "available"
+    },
+    {
+      "id": "producers",
+      "title": { "en": "Producers", "fr": "Producteurs" },
+      "tagline": {
+        "en": "Acks, idempotence, partitioning, batching",
+        "fr": "Acks, idempotence, partitionnement, batching"
+      },
+      "icon": "📤",
+      "status": "available"
+    },
+    {
+      "id": "consumers",
+      "title": { "en": "Consumers", "fr": "Consommateurs" },
+      "tagline": {
+        "en": "Groups, offsets, rebalancing, delivery semantics",
+        "fr": "Groupes, offsets, rebalancing, sémantiques de livraison"
+      },
+      "icon": "📥",
+      "status": "planned"
+    },
+    {
+      "id": "transactions-exactly-once",
+      "title": { "en": "Transactions & exactly-once", "fr": "Transactions & exactly-once" },
+      "tagline": {
+        "en": "Transactional producer, EOS, read_committed",
+        "fr": "Producteur transactionnel, EOS, read_committed"
+      },
+      "icon": "🔁",
+      "status": "planned"
+    },
+    {
+      "id": "streams-ksqldb",
+      "title": { "en": "Kafka Streams & ksqlDB", "fr": "Kafka Streams & ksqlDB" },
+      "tagline": {
+        "en": "KStream, KTable, state stores, windowing",
+        "fr": "KStream, KTable, state stores, fenêtrage"
+      },
+      "icon": "🌊",
+      "status": "planned"
+    },
+    {
+      "id": "schema-registry",
+      "title": { "en": "Schema Registry", "fr": "Schema Registry" },
+      "tagline": {
+        "en": "Avro/Protobuf, compatibility modes, evolution",
+        "fr": "Avro/Protobuf, modes de compatibilité, évolution"
+      },
+      "icon": "📋",
+      "status": "planned"
+    },
+    {
+      "id": "connect",
+      "title": { "en": "Kafka Connect", "fr": "Kafka Connect" },
+      "tagline": {
+        "en": "Source/sink connectors, converters, dead letter queues",
+        "fr": "Connecteurs source/sink, converters, dead letter queues"
+      },
+      "icon": "🔌",
+      "status": "planned"
+    },
+    {
+      "id": "operations",
+      "title": { "en": "Operations & tuning", "fr": "Exploitation & réglages" },
+      "tagline": {
+        "en": "Retention, compaction, lag, partition sizing",
+        "fr": "Rétention, compaction, lag, dimensionnement des partitions"
+      },
+      "icon": "⚙️",
+      "status": "planned"
+    },
+    {
+      "id": "security",
+      "title": { "en": "Security", "fr": "Sécurité" },
+      "tagline": {
+        "en": "SASL, mTLS, ACLs, encryption in transit",
+        "fr": "SASL, mTLS, ACLs, chiffrement en transit"
+      },
+      "icon": "🔐",
+      "status": "planned"
+    },
+    {
+      "id": "cluster-architecture",
+      "title": { "en": "Cluster architecture", "fr": "Architecture du cluster" },
+      "tagline": {
+        "en": "KRaft controller quorum, metadata log, replication protocol",
+        "fr": "Quorum de contrôleurs KRaft, log de métadonnées, protocole de réplication"
+      },
+      "icon": "🏗️",
+      "status": "planned"
+    }
+  ]
+}

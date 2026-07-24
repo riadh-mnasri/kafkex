@@ -1,0 +1,360 @@
+{
+  "id": "fundamentals",
+  "title": { "en": "Cluster fundamentals", "fr": "Fondamentaux du cluster" },
+  "tagline": {
+    "en": "Topics, partitions, brokers, replication, ISR",
+    "fr": "Topics, partitions, brokers, réplication, ISR"
+  },
+  "icon": "🧵",
+  "lessons": [
+    {
+      "id": "topics-partitions",
+      "title": { "en": "Topics & partitions", "fr": "Topics & partitions" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "A topic is a named, append-only log. It is split into one or more partitions, each an independently ordered, immutable sequence of records identified by a strictly increasing offset. There is no ordering guarantee across partitions of the same topic, only within a single partition.",
+            "fr": "Un topic est un log nommé, en ajout seul. Il est découpé en une ou plusieurs partitions, chacune étant une séquence ordonnée et immuable de records identifiés par un offset strictement croissant. Il n'y a aucune garantie d'ordre entre les partitions d'un même topic, seulement à l'intérieur d'une partition."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "The partition a record lands on is decided client-side by the producer's partitioner: a hash of the key modulo the partition count when a key is set, or a sticky (batch-aware) round-robin when the key is null. Same key always maps to the same partition, as long as the partition count does not change.",
+            "fr": "La partition sur laquelle atterrit un record est décidée côté client par le partitioner du producteur : un hash de la clé modulo le nombre de partitions quand une clé est fournie, ou un round-robin \"sticky\" (par batch) quand la clé est nulle. Une même clé aboutit toujours à la même partition, tant que le nombre de partitions ne change pas."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Increasing a topic's partition count is a one-way door for keyed ordering: hash(key) modulo N changes as soon as N changes, so existing keys can suddenly map to a different partition, breaking any downstream assumption that a given key's records always arrive on the same partition, in order.",
+            "fr": "Augmenter le nombre de partitions d'un topic est une porte à sens unique pour l'ordre par clé : hash(clé) modulo N change dès que N change, donc des clés existantes peuvent soudainement pointer vers une autre partition, cassant toute hypothèse en aval selon laquelle les records d'une clé arrivent toujours sur la même partition, dans l'ordre."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "Pick the partition count up front with headroom: it can only grow, never shrink, on an existing topic (`kafka-topics.sh --alter --partitions`).",
+            "fr": "Choisissez le nombre de partitions dès le départ avec de la marge : sur un topic existant, il ne peut que croître, jamais diminuer (`kafka-topics.sh --alter --partitions`)."
+          }
+        }
+      ]
+    },
+    {
+      "id": "brokers-cluster",
+      "title": { "en": "Brokers & the cluster", "fr": "Brokers & le cluster" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "A broker is a Kafka server process holding a subset of partitions on disk. Each partition has one leader replica, hosted on one broker, that serves all reads and writes for that partition; the other replicas are followers that pull from the leader to stay in sync.",
+            "fr": "Un broker est un process serveur Kafka qui héberge un sous-ensemble de partitions sur disque. Chaque partition a une réplique leader, hébergée sur un broker, qui sert toutes les lectures et écritures de cette partition ; les autres répliques sont des followers qui tirent (pull) depuis le leader pour rester synchronisées."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "Since Kafka 4.0, ZooKeeper is gone entirely: cluster metadata (topics, partitions, ACLs, configs) is stored in an internal, replicated log (`__cluster_metadata`) managed by a controller quorum using the Raft consensus protocol, known as KRaft.",
+            "fr": "Depuis Kafka 4.0, ZooKeeper a complètement disparu : les métadonnées du cluster (topics, partitions, ACLs, configurations) sont stockées dans un log interne répliqué (`__cluster_metadata`) géré par un quorum de contrôleurs utilisant le protocole de consensus Raft, appelé KRaft."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "In a KRaft cluster, a broker process can also serve as a controller (combined mode), or controllers can run as a dedicated pool of nodes (separate mode) for larger, more resilient deployments.",
+            "fr": "Dans un cluster KRaft, un process broker peut aussi jouer le rôle de contrôleur (mode combiné), ou les contrôleurs peuvent tourner sur un pool dédié de nœuds (mode séparé) pour des déploiements plus grands et plus résilients."
+          }
+        }
+      ]
+    },
+    {
+      "id": "replication-isr",
+      "title": { "en": "Replication & ISR", "fr": "Réplication & ISR" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "The In-Sync Replica set (ISR) is the subset of a partition's replicas, including the leader, that have fully caught up with the leader's log within `replica.lag.time.max.ms`. Followers that fall behind are removed from the ISR until they catch back up.",
+            "fr": "L'ensemble des In-Sync Replicas (ISR) est le sous-ensemble des répliques d'une partition, leader inclus, qui sont totalement à jour avec le log du leader dans la fenêtre `replica.lag.time.max.ms`. Les followers qui prennent du retard sont retirés de l'ISR jusqu'à ce qu'ils rattrapent."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "The high watermark is the highest offset that has been replicated to every replica in the ISR. Consumers using the default isolation level only ever read up to the high watermark, so an uncommitted (not yet fully replicated) tail of the log is never visible to them.",
+            "fr": "Le high watermark est l'offset le plus haut qui a été répliqué vers toutes les répliques de l'ISR. Les consommateurs utilisant le niveau d'isolation par défaut ne lisent jamais au-delà du high watermark : une queue de log non validée (pas encore totalement répliquée) ne leur est jamais visible."
+          }
+        },
+        {
+          "type": "code",
+          "code": "replication.factor=3\nmin.insync.replicas=2\nacks=all",
+          "caption": {
+            "en": "A write only succeeds once at least min.insync.replicas members of the ISR (leader included) have it, not once all 3 replicas have it.",
+            "fr": "Une écriture ne réussit que lorsqu'au moins min.insync.replicas membres de l'ISR (leader inclus) l'ont, pas lorsque les 3 répliques l'ont."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Unclean leader election (`unclean.leader.election.enable`, off by default) lets an out-of-ISR replica become leader to restore availability when no ISR replica is reachable, at the cost of silently losing any record written after that replica fell behind. Leaving it off favors durability over availability.",
+            "fr": "L'élection non propre de leader (`unclean.leader.election.enable`, désactivée par défaut) permet à une réplique hors ISR de devenir leader pour restaurer la disponibilité quand aucune réplique de l'ISR n'est joignable, au prix d'une perte silencieuse de tout record écrit après que cette réplique a pris du retard. La laisser désactivée privilégie la durabilité sur la disponibilité."
+          }
+        }
+      ]
+    },
+    {
+      "id": "retention-segments",
+      "title": { "en": "Log retention & segments", "fr": "Rétention & segments de log" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "A partition's log on disk is split into segment files, not one giant file. Only the newest (active) segment is appended to; older, rolled segments are immutable and become eligible for deletion once they age out under `retention.ms` or grow past `retention.bytes`.",
+            "fr": "Le log d'une partition sur disque est découpé en fichiers segments, pas un seul gros fichier. Seul le segment le plus récent (actif) reçoit des écritures ; les segments plus anciens, déjà clôturés, sont immuables et deviennent éligibles à la suppression quand ils dépassent `retention.ms` ou `retention.bytes`."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "An offset is a partition-local, monotonically increasing integer identifying a record's position in the log. Offsets have no meaning across partitions: offset 100 on partition 0 and offset 100 on partition 1 are unrelated records.",
+            "fr": "Un offset est un entier local à une partition, strictement croissant, qui identifie la position d'un record dans le log. Les offsets n'ont aucun sens d'une partition à l'autre : l'offset 100 de la partition 0 et l'offset 100 de la partition 1 sont des records sans rapport."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "Log compaction is a separate retention strategy (`cleanup.policy=compact`): instead of deleting by age, it keeps only the latest record per key, forever. Deep dive covered in the operations module.",
+            "fr": "La compaction de log est une stratégie de rétention distincte (`cleanup.policy=compact`) : au lieu de supprimer par ancienneté, elle ne garde que le dernier record par clé, indéfiniment. Approfondi dans le module exploitation."
+          }
+        }
+      ]
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "fc-topic-def",
+      "front": { "en": "What is a Kafka topic?", "fr": "Qu'est-ce qu'un topic Kafka ?" },
+      "back": {
+        "en": "A named, partitioned, append-only log that producers write to and consumers read from.",
+        "fr": "Un log nommé, partitionné, en ajout seul, dans lequel les producteurs écrivent et que les consommateurs lisent."
+      }
+    },
+    {
+      "id": "fc-ordering-scope",
+      "front": { "en": "At what scope does Kafka guarantee message ordering?", "fr": "À quelle échelle Kafka garantit-il l'ordre des messages ?" },
+      "back": {
+        "en": "Only within a single partition, never across the partitions of a topic.",
+        "fr": "Seulement à l'intérieur d'une seule partition, jamais entre les partitions d'un topic."
+      }
+    },
+    {
+      "id": "fc-partition-leader",
+      "front": { "en": "What is a partition leader?", "fr": "Qu'est-ce qu'un leader de partition ?" },
+      "back": {
+        "en": "The replica of a partition that serves all reads and writes for it; followers replicate from the leader.",
+        "fr": "La réplique d'une partition qui sert toutes ses lectures et écritures ; les followers répliquent depuis le leader."
+      }
+    },
+    {
+      "id": "fc-isr-def",
+      "front": { "en": "What does ISR mean?", "fr": "Que signifie ISR ?" },
+      "back": {
+        "en": "In-Sync Replicas: the replicas, leader included, that are fully caught up with the leader's log.",
+        "fr": "In-Sync Replicas : les répliques, leader inclus, totalement à jour avec le log du leader."
+      }
+    },
+    {
+      "id": "fc-null-key-partitioning",
+      "front": { "en": "How is the partition chosen for a record with no key?", "fr": "Comment la partition est-elle choisie pour un record sans clé ?" },
+      "back": {
+        "en": "Via a sticky, batch-aware round-robin: records are grouped onto one partition per batch to improve batching efficiency.",
+        "fr": "Via un round-robin \"sticky\", conscient des batchs : les records sont regroupés sur une partition par batch pour améliorer l'efficacité du batching."
+      }
+    },
+    {
+      "id": "fc-keyed-partitioning",
+      "front": { "en": "How is the partition chosen for a record with a key?", "fr": "Comment la partition est-elle choisie pour un record avec une clé ?" },
+      "back": {
+        "en": "By hashing the key (murmur2) modulo the partition count, computed client-side; the same key always maps to the same partition.",
+        "fr": "En hashant la clé (murmur2) modulo le nombre de partitions, calculé côté client ; une même clé aboutit toujours à la même partition."
+      }
+    },
+    {
+      "id": "fc-min-insync",
+      "front": { "en": "What does min.insync.replicas control?", "fr": "Que contrôle min.insync.replicas ?" },
+      "back": {
+        "en": "The minimum number of ISR members (leader included) that must have a write for it to be acknowledged when acks=all.",
+        "fr": "Le nombre minimum de membres de l'ISR (leader inclus) qui doivent avoir l'écriture pour qu'elle soit acquittée quand acks=all."
+      }
+    },
+    {
+      "id": "fc-kraft",
+      "front": { "en": "What replaced ZooKeeper starting with Kafka 4.0?", "fr": "Qu'est-ce qui a remplacé ZooKeeper à partir de Kafka 4.0 ?" },
+      "back": {
+        "en": "KRaft: a controller quorum using the Raft protocol, storing cluster metadata in an internal Kafka log instead of ZooKeeper.",
+        "fr": "KRaft : un quorum de contrôleurs utilisant le protocole Raft, stockant les métadonnées du cluster dans un log Kafka interne au lieu de ZooKeeper."
+      }
+    },
+    {
+      "id": "fc-high-watermark",
+      "front": { "en": "What is the high watermark?", "fr": "Qu'est-ce que le high watermark ?" },
+      "back": {
+        "en": "The highest offset replicated to every ISR member; consumers by default never read past it.",
+        "fr": "L'offset le plus haut répliqué vers tous les membres de l'ISR ; les consommateurs ne lisent jamais au-delà par défaut."
+      }
+    },
+    {
+      "id": "fc-partition-count-change",
+      "front": { "en": "Can you decrease a topic's partition count?", "fr": "Peut-on diminuer le nombre de partitions d'un topic ?" },
+      "back": {
+        "en": "No. It can only be increased; there is no supported way to shrink it on an existing topic.",
+        "fr": "Non. Il ne peut qu'augmenter ; il n'existe pas de moyen supporté de le réduire sur un topic existant."
+      }
+    },
+    {
+      "id": "fc-unclean-election",
+      "front": { "en": "What is unclean leader election?", "fr": "Qu'est-ce qu'une élection non propre de leader ?" },
+      "back": {
+        "en": "Electing an out-of-ISR replica as leader to restore availability, risking silent data loss; disabled by default.",
+        "fr": "Élire une réplique hors ISR comme leader pour restaurer la disponibilité, au risque d'une perte de données silencieuse ; désactivée par défaut."
+      }
+    },
+    {
+      "id": "fc-log-segment",
+      "front": { "en": "What is a log segment?", "fr": "Qu'est-ce qu'un segment de log ?" },
+      "back": {
+        "en": "One of the files a partition's log is split into on disk; only the active (newest) segment receives writes.",
+        "fr": "Un des fichiers dans lesquels le log d'une partition est découpé sur disque ; seul le segment actif (le plus récent) reçoit des écritures."
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-replica-count",
+      "kind": "mcq",
+      "prompt": {
+        "en": "A topic has 6 partitions and replication factor 3, on a cluster of 3 brokers. How many total partition replicas does the cluster host for this topic?",
+        "fr": "Un topic a 6 partitions et un facteur de réplication de 3, sur un cluster de 3 brokers. Combien de répliques de partition le cluster héberge-t-il au total pour ce topic ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "6", "fr": "6" } },
+        { "id": "b", "label": { "en": "9", "fr": "9" } },
+        { "id": "c", "label": { "en": "18", "fr": "18" } },
+        { "id": "d", "label": { "en": "3", "fr": "3" } }
+      ],
+      "answerId": "c",
+      "explanation": {
+        "en": "6 partitions x 3 replicas each = 18 replica copies spread across the 3 brokers (each broker holds several partition replicas, some as leader, some as follower).",
+        "fr": "6 partitions x 3 répliques chacune = 18 copies de réplique réparties sur les 3 brokers (chaque broker héberge plusieurs répliques de partition, certaines en leader, certaines en follower)."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-keyed-order",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "The topic \"orders\" has multiple partitions and uses the default partitioner. What is guaranteed about these three sends?",
+        "fr": "Le topic \"orders\" a plusieurs partitions et utilise le partitioner par défaut. Que peut-on garantir sur ces trois envois ?"
+      },
+      "code": "producer.send(new ProducerRecord<>(\"orders\", \"user-42\", \"created\"));\nproducer.send(new ProducerRecord<>(\"orders\", \"user-42\", \"shipped\"));\nproducer.send(new ProducerRecord<>(\"orders\", \"user-7\", \"created\"));",
+      "choices": [
+        { "id": "a", "label": { "en": "All three messages land on the same partition", "fr": "Les trois messages atterrissent sur la même partition" } },
+        { "id": "b", "label": { "en": "\"created\" and \"shipped\" for user-42 land on the same partition, in that order; user-7's message may land elsewhere", "fr": "\"created\" et \"shipped\" pour user-42 atterrissent sur la même partition, dans cet ordre ; le message de user-7 peut atterrir ailleurs" } },
+        { "id": "c", "label": { "en": "Messages are spread round-robin regardless of key", "fr": "Les messages sont répartis en round-robin sans tenir compte de la clé" } },
+        { "id": "d", "label": { "en": "Order is not guaranteed even for the same key", "fr": "L'ordre n'est pas garanti même pour une même clé" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Same key always hashes to the same partition, and within a partition, order is preserved. A different key can land on a different partition, with no ordering relationship to the first one.",
+        "fr": "Une même clé hash toujours vers la même partition, et à l'intérieur d'une partition, l'ordre est préservé. Une clé différente peut atterrir sur une autre partition, sans relation d'ordre avec la première."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-impossible-min-insync",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "This topic configuration is broken: every produce request with acks=all fails with NotEnoughReplicasException. Find the bug.",
+        "fr": "Cette configuration de topic est cassée : chaque requête de production avec acks=all échoue avec NotEnoughReplicasException. Trouvez le bug."
+      },
+      "code": "replication.factor=2\nmin.insync.replicas=3\nacks=all",
+      "choices": [
+        { "id": "a", "label": { "en": "acks=all should be acks=1", "fr": "acks=all devrait être acks=1" } },
+        { "id": "b", "label": { "en": "min.insync.replicas (3) exceeds replication.factor (2): the ISR can never contain 3 replicas, so the condition is impossible to satisfy", "fr": "min.insync.replicas (3) dépasse replication.factor (2) : l'ISR ne peut jamais contenir 3 répliques, la condition est donc impossible à satisfaire" } },
+        { "id": "c", "label": { "en": "replication.factor must always equal min.insync.replicas", "fr": "replication.factor doit toujours être égal à min.insync.replicas" } },
+        { "id": "d", "label": { "en": "There is no bug, this is a valid durable configuration", "fr": "Il n'y a pas de bug, c'est une configuration durable valide" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "min.insync.replicas can never be greater than replication.factor: there are only 2 replicas total, so the ISR has a hard ceiling of 2. Requiring 3 makes every write fail by construction.",
+        "fr": "min.insync.replicas ne peut jamais dépasser replication.factor : il n'y a que 2 répliques au total, donc l'ISR a un plafond dur de 2. En exiger 3 fait échouer chaque écriture par construction."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-partition-alter",
+      "kind": "mcq",
+      "prompt": {
+        "en": "Which topic-level setting can be increased on an existing topic via kafka-topics.sh --alter, but never decreased?",
+        "fr": "Quel réglage au niveau du topic peut être augmenté sur un topic existant via kafka-topics.sh --alter, mais jamais diminué ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Partition count", "fr": "Le nombre de partitions" } },
+        { "id": "b", "label": { "en": "Replication factor", "fr": "Le facteur de réplication" } },
+        { "id": "c", "label": { "en": "retention.ms", "fr": "retention.ms" } },
+        { "id": "d", "label": { "en": "cleanup.policy", "fr": "cleanup.policy" } }
+      ],
+      "answerId": "a",
+      "explanation": {
+        "en": "Partition count only grows. Replication factor changes require a partition reassignment tool, not --alter; retention.ms and cleanup.policy can be freely changed in either direction.",
+        "fr": "Le nombre de partitions ne fait qu'augmenter. Changer le facteur de réplication nécessite un outil de réassignation de partitions, pas --alter ; retention.ms et cleanup.policy peuvent être changés librement dans les deux sens."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-broker-crash-isr",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "Partition 0 of topic \"payments\" has its leader on broker 1 and followers on brokers 2 and 3, with min.insync.replicas=2 and acks=all. Broker 1 crashes. At that moment, broker 2's replica was in the ISR, but broker 3's was lagging and had been removed from the ISR. unclean.leader.election.enable=false (default). What happens?",
+        "fr": "La partition 0 du topic \"payments\" a son leader sur le broker 1 et ses followers sur les brokers 2 et 3, avec min.insync.replicas=2 et acks=all. Le broker 1 crashe. À cet instant, la réplique du broker 2 était dans l'ISR, mais celle du broker 3 était en retard et avait été retirée de l'ISR. unclean.leader.election.enable=false (par défaut). Que se passe-t-il ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Broker 3 becomes leader immediately; some acknowledged messages may be lost", "fr": "Le broker 3 devient leader immédiatement ; certains messages acquittés peuvent être perdus" } },
+        { "id": "b", "label": { "en": "Broker 2 becomes leader; no acknowledged data is lost since it was in the ISR", "fr": "Le broker 2 devient leader ; aucune donnée acquittée n'est perdue puisqu'il était dans l'ISR" } },
+        { "id": "c", "label": { "en": "The partition stays unavailable until broker 1 recovers, since only broker 1 can be leader", "fr": "La partition reste indisponible jusqu'au retour du broker 1, car lui seul peut être leader" } },
+        { "id": "d", "label": { "en": "The topic is automatically deleted to prevent inconsistency", "fr": "Le topic est automatiquement supprimé pour éviter une incohérence" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Unclean leader election only concerns promoting a replica that is outside the ISR. Broker 2 was in the ISR, so it becomes the new leader through a normal, clean election; broker 3 stays out of the ISR until it catches up.",
+        "fr": "L'élection non propre ne concerne que la promotion d'une réplique hors ISR. Le broker 2 étant dans l'ISR, il devient le nouveau leader via une élection normale et propre ; le broker 3 reste hors de l'ISR jusqu'à ce qu'il rattrape son retard."
+      },
+      "difficulty": 3
+    },
+    {
+      "id": "ex-repartition-ordering",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team increases the \"orders\" topic from 6 to 12 partitions to handle more load. A few days later, a downstream consumer that groups by user id starts seeing the same user's events split across two different partitions, breaking its per-user ordering logic. Find the bug.",
+        "fr": "Une équipe augmente le topic \"orders\" de 6 à 12 partitions pour absorber plus de charge. Quelques jours plus tard, un consommateur en aval qui regroupe par identifiant utilisateur constate que les événements d'un même utilisateur se répartissent maintenant sur deux partitions différentes, cassant sa logique d'ordre par utilisateur. Trouvez le bug."
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "The consumer group has too many members", "fr": "Le groupe de consommateurs a trop de membres" } },
+        { "id": "b", "label": { "en": "Changing the partition count changes hash(key) modulo N, so a key's mapped partition can change for records produced after the change", "fr": "Changer le nombre de partitions change hash(clé) modulo N, donc la partition associée à une clé peut changer pour les records produits après le changement" } },
+        { "id": "c", "label": { "en": "Replication factor was also increased, which reassigns keys", "fr": "Le facteur de réplication a aussi été augmenté, ce qui réassigne les clés" } },
+        { "id": "d", "label": { "en": "Consumers were not restarted after the change", "fr": "Les consommateurs n'ont pas été redémarrés après le changement" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "The default partitioner computes hash(key) modulo partition_count. Going from 6 to 12 partitions changes that mapping for most keys going forward, so the same user's new events can land on a different partition than their older ones, without any error or warning from Kafka.",
+        "fr": "Le partitioner par défaut calcule hash(clé) modulo partition_count. Passer de 6 à 12 partitions change ce mapping pour la plupart des clés à partir de ce moment, donc les nouveaux événements d'un même utilisateur peuvent atterrir sur une partition différente de ses anciens, sans aucune erreur ni avertissement de la part de Kafka."
+      },
+      "difficulty": 2
+    }
+  ]
+}
