@@ -1,0 +1,338 @@
+{
+  "id": "connect",
+  "title": { "en": "Kafka Connect", "fr": "Kafka Connect" },
+  "tagline": {
+    "en": "Source/sink connectors, converters, dead letter queues",
+    "fr": "Connecteurs source/sink, converters, dead letter queues"
+  },
+  "icon": "🔌",
+  "lessons": [
+    {
+      "id": "connect-basics",
+      "title": { "en": "Connect basics", "fr": "Les bases de Connect" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Kafka Connect moves data in and out of Kafka without hand-written producer/consumer code. A source connector pulls data from an external system (a database, an API, a file) and writes it to Kafka topics; a sink connector reads from Kafka topics and writes to an external system.",
+            "fr": "Kafka Connect fait entrer et sortir des données de Kafka sans code producteur/consommateur écrit à la main. Un connecteur source récupère des données d'un système externe (une base de données, une API, un fichier) et les écrit dans des topics Kafka ; un connecteur sink lit des topics Kafka et écrit vers un système externe."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "A connector instance holds the configuration (which system, which topics, credentials, polling settings); it splits the actual work into one or more tasks, which are what actually run and can be spread across workers for parallelism.",
+            "fr": "Une instance de connecteur porte la configuration (quel système, quels topics, identifiants, réglages de scrutation) ; elle découpe le travail réel en une ou plusieurs tasks, qui sont ce qui s'exécute vraiment et peut être réparti entre workers pour du parallélisme."
+          }
+        }
+      ]
+    },
+    {
+      "id": "standalone-vs-distributed",
+      "title": { "en": "Standalone vs distributed mode", "fr": "Mode standalone vs distribué" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Standalone mode runs a single Connect worker process with configuration in local files; it has no fault tolerance and no coordination with other workers, since there is only one. It fits development, quick experiments or agents tied to a specific host (like tailing a local log file).",
+            "fr": "Le mode standalone fait tourner un seul process worker Connect avec la configuration dans des fichiers locaux ; il n'offre aucune tolérance aux pannes ni coordination avec d'autres workers, puisqu'il n'y en a qu'un. Il convient au développement, aux expérimentations rapides, ou aux agents liés à une machine spécifique (comme suivre un fichier de log local)."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "Distributed mode runs a cluster of Connect workers that coordinate via internal Kafka topics (connector configs, task offsets, status) and a group protocol similar to consumer groups. Connectors and their tasks are managed through a REST API, and if a worker dies, its tasks are automatically rebalanced onto the remaining workers.",
+            "fr": "Le mode distribué fait tourner un cluster de workers Connect qui coordonnent via des topics Kafka internes (configurations de connecteurs, offsets de tasks, statut) et un protocole de groupe similaire à celui des groupes de consommateurs. Les connecteurs et leurs tasks se gèrent via une API REST, et si un worker meurt, ses tasks sont automatiquement rééquilibrées sur les workers restants."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Standalone mode has no rebalancing and no shared state: running it for a production workload that needs high availability means a single process crash stops that connector entirely until someone restarts it manually.",
+            "fr": "Le mode standalone n'a ni rebalancing ni état partagé : l'utiliser pour une charge de production nécessitant de la haute disponibilité signifie qu'un simple crash de process arrête entièrement ce connecteur jusqu'à ce que quelqu'un le redémarre manuellement."
+          }
+        }
+      ]
+    },
+    {
+      "id": "converters-transforms",
+      "title": { "en": "Converters & SMTs", "fr": "Converters & SMT" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "A converter (de)serializes between Connect's internal data representation and the format actually stored on the Kafka topic, whether that's Avro or Protobuf through Schema Registry, or plain JSON. key.converter and value.converter are configured independently, so it's common to use a simple string converter for keys and a schema-aware one for values.",
+            "fr": "Un converter (dé)sérialise entre la représentation de données interne de Connect et le format effectivement stocké sur le topic Kafka, que ce soit Avro ou Protobuf via Schema Registry, ou du JSON brut. key.converter et value.converter sont configurés indépendamment, il est donc courant d'utiliser un converter de type string simple pour les clés et un converter avec schéma pour les valeurs."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "A Single Message Transform (SMT) is a small, chainable per-record transformation, renaming a field, masking a sensitive value, dropping a column, routing to a different topic, applied inline in the connector's pipeline, without writing a custom connector or a downstream Streams job just for that.",
+            "fr": "Une Single Message Transform (SMT) est une petite transformation par record, chaînable, renommer un champ, masquer une valeur sensible, retirer une colonne, router vers un autre topic, appliquée directement dans le pipeline du connecteur, sans avoir à écrire un connecteur personnalisé ou un job Streams en aval juste pour ça."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "SMTs are meant to be lightweight and stateless. Anything needing joins, aggregation or state across records belongs in Kafka Streams or ksqlDB downstream, not stacked into a chain of SMTs.",
+            "fr": "Les SMT sont censées rester légères et sans état. Tout ce qui nécessite des jointures, des agrégations ou un état à travers les records relève de Kafka Streams ou ksqlDB en aval, pas d'un empilement de SMT."
+          }
+        }
+      ]
+    },
+    {
+      "id": "error-handling-dlq",
+      "title": { "en": "Error handling & dead letter queues", "fr": "Gestion des erreurs & dead letter queues" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "errors.tolerance=none is the default: the first record-level error (a bad conversion, a transform failure) stops the task entirely, requiring manual intervention. errors.tolerance=all skips the offending record and keeps the task running.",
+            "fr": "errors.tolerance=none est le défaut : la première erreur au niveau d'un record (une conversion ratée, un échec de transform) arrête entièrement la task, ce qui nécessite une intervention manuelle. errors.tolerance=all saute le record fautif et laisse la task continuer."
+          }
+        },
+        {
+          "type": "code",
+          "code": "errors.tolerance=all\nerrors.deadletterqueue.topic.name=orders-sink-dlq\nerrors.deadletterqueue.topic.replication.factor=3",
+          "caption": {
+            "en": "For sink connectors, this routes failed records to a Kafka DLQ topic instead of silently discarding them.",
+            "fr": "Pour les connecteurs sink, cela route les records en échec vers un topic Kafka DLQ au lieu de les jeter silencieusement."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "errors.deadletterqueue.topic.name only routes failed records for sink connectors. Setting errors.tolerance=all without also configuring a DLQ topic name means failed records are simply skipped and dropped, with only logs (not a durable topic) to find out afterward. Source connector error handling is different, since there is no Kafka record yet to reroute when the failure happens on the source side.",
+            "fr": "errors.deadletterqueue.topic.name ne route les records en échec que pour les connecteurs sink. Régler errors.tolerance=all sans configurer aussi un nom de topic DLQ signifie que les records en échec sont simplement sautés et perdus, avec seulement des logs (pas un topic durable) pour s'en rendre compte après coup. La gestion d'erreurs des connecteurs source est différente, puisqu'il n'y a pas encore de record Kafka à rerouter quand l'échec se produit côté source."
+          }
+        }
+      ]
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "fc-source-connector",
+      "front": { "en": "What does a Kafka Connect source connector do?", "fr": "Que fait un connecteur source Kafka Connect ?" },
+      "back": {
+        "en": "Pulls data from an external system and writes it into Kafka topics.",
+        "fr": "Récupère des données d'un système externe et les écrit dans des topics Kafka."
+      }
+    },
+    {
+      "id": "fc-sink-connector",
+      "front": { "en": "What does a Kafka Connect sink connector do?", "fr": "Que fait un connecteur sink Kafka Connect ?" },
+      "back": {
+        "en": "Reads data from Kafka topics and writes it into an external system.",
+        "fr": "Lit des données depuis des topics Kafka et les écrit vers un système externe."
+      }
+    },
+    {
+      "id": "fc-connector-vs-task",
+      "front": { "en": "What's the relationship between a connector and its tasks?", "fr": "Quelle est la relation entre un connecteur et ses tasks ?" },
+      "back": {
+        "en": "The connector holds the configuration; it splits the actual work into one or more tasks that run in parallel across workers.",
+        "fr": "Le connecteur porte la configuration ; il découpe le travail réel en une ou plusieurs tasks qui s'exécutent en parallèle sur les workers."
+      }
+    },
+    {
+      "id": "fc-distributed-mode-benefit",
+      "front": { "en": "What does distributed mode give you over standalone?", "fr": "Qu'apporte le mode distribué par rapport au standalone ?" },
+      "back": {
+        "en": "Fault tolerance and horizontal scaling: a cluster of workers coordinates via Kafka and rebalances tasks if a worker fails.",
+        "fr": "Tolérance aux pannes et montée en charge horizontale : un cluster de workers coordonne via Kafka et rééquilibre les tasks si un worker tombe."
+      }
+    },
+    {
+      "id": "fc-distributed-state-storage",
+      "front": { "en": "Where does distributed Connect store connector configs, offsets and status?", "fr": "Où le Connect distribué stocke-t-il les configurations de connecteurs, offsets et statuts ?" },
+      "back": {
+        "en": "In internal Kafka topics, replicated and durable like any other Kafka data.",
+        "fr": "Dans des topics Kafka internes, répliqués et durables comme n'importe quelle autre donnée Kafka."
+      }
+    },
+    {
+      "id": "fc-converter-role",
+      "front": { "en": "What does a converter do in Kafka Connect?", "fr": "Que fait un converter dans Kafka Connect ?" },
+      "back": {
+        "en": "(De)serializes between Connect's internal data representation and the wire format used on the topic (e.g. Avro, JSON).",
+        "fr": "(Dé)sérialise entre la représentation interne des données de Connect et le format sur le fil utilisé sur le topic (par ex. Avro, JSON)."
+      }
+    },
+    {
+      "id": "fc-key-value-converter-independent",
+      "front": { "en": "Can key.converter and value.converter be different?", "fr": "key.converter et value.converter peuvent-ils être différents ?" },
+      "back": {
+        "en": "Yes, they're configured independently; a simple converter for keys plus Avro/Protobuf for values is a common combination.",
+        "fr": "Oui, ils sont configurés indépendamment ; un converter simple pour les clés associé à Avro/Protobuf pour les valeurs est une combinaison courante."
+      }
+    },
+    {
+      "id": "fc-smt-def",
+      "front": { "en": "What is a Single Message Transform (SMT)?", "fr": "Qu'est-ce qu'une Single Message Transform (SMT) ?" },
+      "back": {
+        "en": "A lightweight, chainable per-record transformation (rename, mask, route) applied inline, without writing a custom connector.",
+        "fr": "Une transformation par record, légère et chaînable (renommer, masquer, router), appliquée directement, sans écrire de connecteur personnalisé."
+      }
+    },
+    {
+      "id": "fc-errors-tolerance-none",
+      "front": { "en": "What does errors.tolerance=none (the default) do?", "fr": "Que fait errors.tolerance=none (le défaut) ?" },
+      "back": {
+        "en": "Stops the connector task on the first record-level error, requiring manual intervention.",
+        "fr": "Arrête la task du connecteur à la première erreur au niveau d'un record, nécessitant une intervention manuelle."
+      }
+    },
+    {
+      "id": "fc-errors-tolerance-all",
+      "front": { "en": "What does errors.tolerance=all do?", "fr": "Que fait errors.tolerance=all ?" },
+      "back": {
+        "en": "Skips records that fail to process and keeps the task running instead of halting it.",
+        "fr": "Saute les records qui échouent au traitement et laisse la task continuer au lieu de s'arrêter."
+      }
+    },
+    {
+      "id": "fc-dlq-def",
+      "front": { "en": "What is a dead letter queue (DLQ) in Kafka Connect?", "fr": "Qu'est-ce qu'une dead letter queue (DLQ) dans Kafka Connect ?" },
+      "back": {
+        "en": "A Kafka topic that a sink connector routes failed records to instead of dropping them, when configured with errors.deadletterqueue.topic.name.",
+        "fr": "Un topic Kafka vers lequel un connecteur sink route les records en échec au lieu de les jeter, quand configuré via errors.deadletterqueue.topic.name."
+      }
+    },
+    {
+      "id": "fc-dlq-sink-only",
+      "front": { "en": "Does DLQ routing work the same way for source connectors as for sink connectors?", "fr": "Le routage DLQ fonctionne-t-il de la même manière pour les connecteurs source que pour les sink ?" },
+      "back": {
+        "en": "No, DLQ routing is a sink connector feature; source connectors have no Kafka record yet to reroute when a failure happens.",
+        "fr": "Non, le routage DLQ est une fonctionnalité des connecteurs sink ; les connecteurs source n'ont pas encore de record Kafka à rerouter quand un échec survient."
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-source-sink-mcq",
+      "kind": "mcq",
+      "prompt": {
+        "en": "You need to continuously copy rows from a PostgreSQL table into a Kafka topic as they change. Which type of connector do you need?",
+        "fr": "Vous devez copier en continu les lignes d'une table PostgreSQL vers un topic Kafka au fur et à mesure de leurs changements. Quel type de connecteur vous faut-il ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "A sink connector", "fr": "Un connecteur sink" } },
+        { "id": "b", "label": { "en": "A source connector", "fr": "Un connecteur source" } },
+        { "id": "c", "label": { "en": "A Single Message Transform", "fr": "Une Single Message Transform" } },
+        { "id": "d", "label": { "en": "A dead letter queue", "fr": "Une dead letter queue" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Reading from an external system (PostgreSQL) into Kafka is exactly the source connector's job; a sink connector would do the opposite, Kafka to an external system.",
+        "fr": "Lire depuis un système externe (PostgreSQL) vers Kafka est précisément le rôle du connecteur source ; un connecteur sink ferait l'inverse, de Kafka vers un système externe."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-worker-crash-rebalance",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A distributed Connect cluster has 3 workers running a sink connector with 6 tasks spread evenly across them. One worker crashes. What happens to its 2 tasks?",
+        "fr": "Un cluster Connect distribué a 3 workers exécutant un connecteur sink avec 6 tasks réparties équitablement entre eux. Un worker crashe. Que deviennent ses 2 tasks ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "They are lost until that specific worker restarts", "fr": "Elles sont perdues jusqu'à ce que ce worker précis redémarre" } },
+        { "id": "b", "label": { "en": "They are automatically rebalanced onto the 2 remaining workers", "fr": "Elles sont automatiquement rééquilibrées sur les 2 workers restants" } },
+        { "id": "c", "label": { "en": "The entire connector is deleted", "fr": "Le connecteur entier est supprimé" } },
+        { "id": "d", "label": { "en": "The cluster stops accepting new connectors", "fr": "Le cluster arrête d'accepter de nouveaux connecteurs" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "This is the fault tolerance distributed mode is built for: task assignment is coordinated through Kafka, similar to a consumer group rebalance, so surviving workers pick up the orphaned tasks automatically.",
+        "fr": "C'est exactement la tolérance aux pannes pour laquelle le mode distribué est conçu : l'assignation des tasks est coordonnée via Kafka, de façon similaire à un rebalance de groupe de consommateurs, donc les workers survivants récupèrent automatiquement les tasks orphelines."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-standalone-in-prod",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team runs a business-critical sink connector in standalone mode on a single VM, assuming Kafka Connect's usual fault tolerance applies. The VM reboots for a routine patch and the pipeline silently stops until someone notices hours later. Find the bug.",
+        "fr": "Une équipe fait tourner un connecteur sink critique en mode standalone sur une seule VM, en supposant que la tolérance aux pannes habituelle de Kafka Connect s'applique. La VM redémarre pour un correctif de routine et le pipeline s'arrête silencieusement jusqu'à ce que quelqu'un le remarque des heures plus tard. Find the bug."
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "The connector should have used errors.tolerance=all", "fr": "Le connecteur aurait dû utiliser errors.tolerance=all" } },
+        { "id": "b", "label": { "en": "Standalone mode is a single process with no coordination or rebalancing; only distributed mode restarts failed tasks on other workers automatically", "fr": "Le mode standalone est un unique process sans coordination ni rebalancing ; seul le mode distribué redémarre automatiquement les tasks en échec sur d'autres workers" } },
+        { "id": "c", "label": { "en": "The VM needed a bigger disk", "fr": "La VM avait besoin d'un disque plus gros" } },
+        { "id": "d", "label": { "en": "This is expected behavior and there is no fix", "fr": "C'est un comportement attendu et il n'y a pas de correctif" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Standalone mode has no cluster, no shared state, and no automatic recovery on another node: it is meant for development or single-host agents. Anything needing high availability belongs in distributed mode across multiple worker hosts.",
+        "fr": "Le mode standalone n'a ni cluster, ni état partagé, ni reprise automatique sur un autre nœud : il est destiné au développement ou aux agents sur une seule machine. Tout ce qui nécessite de la haute disponibilité relève du mode distribué sur plusieurs machines worker."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-smt-purpose",
+      "kind": "mcq",
+      "prompt": {
+        "en": "You need to mask a \"ssn\" field before it lands in Kafka from a source connector, without writing a custom connector. What's the right tool?",
+        "fr": "Vous devez masquer un champ \"ssn\" avant qu'il n'atterrisse dans Kafka depuis un connecteur source, sans écrire de connecteur personnalisé. Quel est le bon outil ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "A Single Message Transform (SMT)", "fr": "Une Single Message Transform (SMT)" } },
+        { "id": "b", "label": { "en": "A dead letter queue", "fr": "Une dead letter queue" } },
+        { "id": "c", "label": { "en": "Distributed mode", "fr": "Le mode distribué" } },
+        { "id": "d", "label": { "en": "A different converter", "fr": "Un converter différent" } }
+      ],
+      "answerId": "a",
+      "explanation": {
+        "en": "Masking or dropping a specific field per record is a textbook use case for a Single Message Transform, applied inline in the connector's pipeline without any custom code.",
+        "fr": "Masquer ou retirer un champ spécifique par record est un cas d'usage classique d'une Single Message Transform, appliquée directement dans le pipeline du connecteur sans code personnalisé."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-tolerance-none-stall",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A sink connector task is processing a batch of 1000 records with the default errors.tolerance=none. Record 500 fails to convert due to a malformed value. What happens to records 501-1000?",
+        "fr": "Une task de connecteur sink traite un batch de 1000 records avec le errors.tolerance=none par défaut. Le record 500 échoue à la conversion à cause d'une valeur malformée. Que deviennent les records 501 à 1000 ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "They are processed normally, only record 500 is skipped", "fr": "Ils sont traités normalement, seul le record 500 est sauté" } },
+        { "id": "b", "label": { "en": "The task stops entirely; records after the failure are not processed until the task is fixed and restarted", "fr": "La task s'arrête entièrement ; les records après l'échec ne sont pas traités tant que la task n'est pas corrigée et redémarrée" } },
+        { "id": "c", "label": { "en": "They are routed to a dead letter queue automatically", "fr": "Ils sont routés automatiquement vers une dead letter queue" } },
+        { "id": "d", "label": { "en": "The connector switches to errors.tolerance=all on its own", "fr": "Le connecteur passe automatiquement à errors.tolerance=all" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "errors.tolerance=none means the very first error halts the task. Good records after the bad one are simply not reached until an operator fixes the underlying issue (or switches tolerance to all) and restarts the task.",
+        "fr": "errors.tolerance=none signifie que la toute première erreur arrête la task. Les bons records après le mauvais ne sont simplement pas atteints tant qu'un opérateur ne corrige pas le problème sous-jacent (ou ne passe pas la tolérance à all) et ne redémarre pas la task."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-missing-dlq-config",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team sets errors.tolerance=all on a sink connector to stop it from halting on bad records, expecting failed records to be captured somewhere for later review. Weeks later they realize failed records were never recoverable. Find the bug.",
+        "fr": "Une équipe règle errors.tolerance=all sur un connecteur sink pour l'empêcher de s'arrêter sur les mauvais records, en s'attendant à ce que les records en échec soient capturés quelque part pour examen ultérieur. Des semaines plus tard, ils réalisent que les records en échec n'ont jamais été récupérables. Trouvez le bug."
+      },
+      "code": "errors.tolerance=all",
+      "choices": [
+        { "id": "a", "label": { "en": "errors.tolerance=all already captures failed records automatically in a default topic", "fr": "errors.tolerance=all capture déjà automatiquement les records en échec dans un topic par défaut" } },
+        { "id": "b", "label": { "en": "errors.tolerance=all only stops the task from halting; without errors.deadletterqueue.topic.name also set, failed records are simply skipped and dropped, not saved anywhere durable", "fr": "errors.tolerance=all ne fait qu'empêcher la task de s'arrêter ; sans errors.deadletterqueue.topic.name aussi configuré, les records en échec sont simplement sautés et perdus, pas sauvegardés durablement" } },
+        { "id": "c", "label": { "en": "The connector needs to be a source connector for DLQ to work", "fr": "Le connecteur doit être un connecteur source pour que la DLQ fonctionne" } },
+        { "id": "d", "label": { "en": "DLQ requires distributed mode with at least 5 workers", "fr": "La DLQ nécessite le mode distribué avec au moins 5 workers" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "errors.tolerance and errors.deadletterqueue.topic.name are two separate settings. Tolerance alone changes failure behavior from \"stop\" to \"skip\"; without a DLQ topic explicitly configured, skipped records are gone for good, only visible in logs at best.",
+        "fr": "errors.tolerance et errors.deadletterqueue.topic.name sont deux réglages distincts. La tolérance seule change le comportement d'échec de \"arrêt\" à \"saut\" ; sans topic DLQ explicitement configuré, les records sautés sont perdus définitivement, visibles au mieux dans les logs."
+      },
+      "difficulty": 2
+    }
+  ]
+}

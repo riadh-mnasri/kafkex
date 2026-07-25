@@ -13,6 +13,14 @@ import type { Module, ModuleRef, Pack } from "./types";
 import packManifest from "@/content/packs/kafka/pack.json";
 import fundamentals from "@/content/packs/kafka/modules/fundamentals.json";
 import producers from "@/content/packs/kafka/modules/producers.json";
+import consumers from "@/content/packs/kafka/modules/consumers.json";
+import transactionsExactlyOnce from "@/content/packs/kafka/modules/transactions-exactly-once.json";
+import streamsKsqldb from "@/content/packs/kafka/modules/streams-ksqldb.json";
+import schemaRegistry from "@/content/packs/kafka/modules/schema-registry.json";
+import connect from "@/content/packs/kafka/modules/connect.json";
+import operations from "@/content/packs/kafka/modules/operations.json";
+import security from "@/content/packs/kafka/modules/security.json";
+import clusterArchitecture from "@/content/packs/kafka/modules/cluster-architecture.json";
 
 export const pack = packManifest as unknown as Pack;
 
@@ -20,6 +28,14 @@ export const pack = packManifest as unknown as Pack;
 const modules: Record<string, Module> = {
   [fundamentals.id]: fundamentals as unknown as Module,
   [producers.id]: producers as unknown as Module,
+  [consumers.id]: consumers as unknown as Module,
+  [transactionsExactlyOnce.id]: transactionsExactlyOnce as unknown as Module,
+  [streamsKsqldb.id]: streamsKsqldb as unknown as Module,
+  [schemaRegistry.id]: schemaRegistry as unknown as Module,
+  [connect.id]: connect as unknown as Module,
+  [operations.id]: operations as unknown as Module,
+  [security.id]: security as unknown as Module,
+  [clusterArchitecture.id]: clusterArchitecture as unknown as Module,
 };
 
 export function getModule(id: string): Module | undefined {

@@ -1,0 +1,336 @@
+{
+  "id": "operations",
+  "title": { "en": "Operations & tuning", "fr": "Exploitation & réglages" },
+  "tagline": {
+    "en": "Retention, compaction, lag, partition sizing",
+    "fr": "Rétention, compaction, lag, dimensionnement des partitions"
+  },
+  "icon": "⚙️",
+  "lessons": [
+    {
+      "id": "retention-vs-compaction",
+      "title": { "en": "Retention vs compaction", "fr": "Rétention vs compaction" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "cleanup.policy=delete, the default, removes whole log segments once they age past retention.ms or the partition exceeds retention.bytes: it is a time/size window over the raw event history. cleanup.policy=compact instead keeps only the latest record per key, indefinitely, discarding older values for the same key as compaction runs.",
+            "fr": "cleanup.policy=delete, le défaut, supprime des segments de log entiers une fois qu'ils dépassent retention.ms ou que la partition dépasse retention.bytes : c'est une fenêtre temps/taille sur l'historique brut des événements. cleanup.policy=compact garde au contraire seulement le dernier record par clé, indéfiniment, en écartant les anciennes valeurs d'une même clé au fur et à mesure que la compaction s'exécute."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "A tombstone, a record with a null value for a key, marks that key for deletion on a compacted topic. It is kept around for delete.retention.ms (not deleted immediately) so that consumers reading with some delay still get a chance to see the deletion before it disappears for good.",
+            "fr": "Un tombstone, un record avec une valeur null pour une clé, marque cette clé pour suppression sur un topic compacté. Il est conservé pendant delete.retention.ms (pas supprimé immédiatement) afin que les consommateurs lisant avec un certain délai aient quand même la possibilité de voir la suppression avant qu'elle ne disparaisse pour de bon."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "cleanup.policy=\"compact,delete\" combines both: compaction keeps the latest value per key, while the delete side additionally purges segments older than retention.ms, useful when a compacted topic must not grow unbounded with keys nobody updates anymore.",
+            "fr": "cleanup.policy=\"compact,delete\" combine les deux : la compaction garde la dernière valeur par clé, tandis que le volet delete purge en plus les segments plus vieux que retention.ms, utile quand un topic compacté ne doit pas croître indéfiniment avec des clés que plus personne ne met à jour."
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer-lag",
+      "title": { "en": "Monitoring consumer lag", "fr": "Surveiller le lag des consommateurs" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Consumer lag, per partition, is the latest (log end) offset minus the group's committed offset: how many records the group hasn't consumed yet. kafka-consumer-groups.sh --describe reports it directly, and it's usually the single most useful health signal for a consumer group.",
+            "fr": "Le lag d'un consommateur, par partition, est l'offset le plus récent (fin du log) moins l'offset validé du groupe : combien de records le groupe n'a pas encore consommés. kafka-consumer-groups.sh --describe le rapporte directement, et c'est en général le signal de santé le plus utile pour un groupe de consommateurs."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Zero lag is not conclusive proof of health on its own: it can mean the consumer is genuinely keeping up under load, or simply that no new data has arrived recently. What matters is the trend under real, sustained traffic, not a single point-in-time reading.",
+            "fr": "Un lag nul n'est pas à lui seul une preuve de bonne santé : cela peut vouloir dire que le consommateur suit réellement le rythme sous charge, ou simplement qu'aucune nouvelle donnée n'est arrivée récemment. Ce qui compte est la tendance sous un trafic réel et soutenu, pas une seule mesure ponctuelle."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "Lag that grows steadily and does not recover means the consumer group processes slower than data arrives (or is stuck/crashed): the fix is more parallelism (more partitions and consumers), faster per-record processing, or investigating why the group stopped making progress.",
+            "fr": "Un lag qui croît régulièrement et ne se résorbe pas signifie que le groupe de consommateurs traite plus lentement que les données n'arrivent (ou qu'il est bloqué/crashé) : le correctif est plus de parallélisme (plus de partitions et de consommateurs), un traitement par record plus rapide, ou une investigation sur l'arrêt de la progression du groupe."
+          }
+        }
+      ]
+    },
+    {
+      "id": "partition-sizing",
+      "title": { "en": "Partition count & sizing", "fr": "Nombre de partitions & dimensionnement" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "More partitions mean more parallelism headroom for producers and consumers, but they are not free: every partition costs open file handles on brokers, adds replication traffic, and lengthens leader election and controller failover time, since more state has to move during recovery.",
+            "fr": "Plus de partitions signifie plus de marge de parallélisme pour producteurs et consommateurs, mais ce n'est pas gratuit : chaque partition coûte des descripteurs de fichiers ouverts sur les brokers, ajoute du trafic de réplication, et allonge le temps d'élection de leader et de bascule du contrôleur, car plus d'état doit se déplacer lors de la reprise."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Over-partitioning a low-throughput topic \"to future-proof it\" buys nothing useful today and adds real operational cost (cluster-wide metadata size, slower rebalances, more replication overhead) for parallelism that will never actually be exercised. Size for a realistic target throughput per partition, then add partitions when you actually need more.",
+            "fr": "Sur-partitionner un topic à faible débit \"pour anticiper\" n'apporte rien d'utile aujourd'hui et ajoute un vrai coût opérationnel (taille des métadonnées à l'échelle du cluster, rebalances plus lents, surcharge de réplication) pour un parallélisme qui ne sera jamais réellement exploité. Dimensionnez pour un débit cible réaliste par partition, puis ajoutez des partitions quand le besoin se fait réellement sentir."
+          }
+        }
+      ]
+    },
+    {
+      "id": "broker-tuning",
+      "title": { "en": "Broker & disk basics", "fr": "Bases broker & disque" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Kafka leans heavily on the OS page cache for log reads and writes rather than a large JVM heap: sequential access patterns are served efficiently from page cache, so brokers typically run with a modest heap (a few GB) and let the operating system cache the rest, avoiding long GC pauses that a huge heap would risk.",
+            "fr": "Kafka s'appuie fortement sur le page cache du système d'exploitation pour les lectures et écritures du log plutôt que sur un gros tas JVM : les accès séquentiels sont servis efficacement depuis le page cache, donc les brokers tournent en général avec un tas modeste (quelques Go) et laissent le système d'exploitation mettre le reste en cache, évitant les longues pauses GC qu'un tas énorme risquerait de provoquer."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "An under-replicated partition is one whose ISR is smaller than its configured replication factor: a key, always-worth-alerting-on health signal that some replica is lagging behind or unreachable. A brief spike right after a broker restart is normal and should self-heal as the replica catches up; a sustained increase is not.",
+            "fr": "Une partition sous-répliquée est une partition dont l'ISR est plus petite que son facteur de réplication configuré : un signal de santé clé, toujours digne d'une alerte, indiquant qu'une réplique est en retard ou injoignable. Un pic bref juste après le redémarrage d'un broker est normal et devrait se résorber de lui-même à mesure que la réplique rattrape son retard ; une hausse soutenue ne l'est pas."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "RAID5/6 add write overhead (parity calculation) that works against Kafka's sequential-write-heavy workload; the common recommendations are JBOD (each disk as its own independent log directory, letting Kafka spread partitions across them) or RAID10 when hardware mirroring is preferred over Kafka's own replication for local resilience.",
+            "fr": "RAID5/6 ajoutent une surcharge d'écriture (calcul de parité) qui va à l'encontre de la charge de travail de Kafka, très orientée écriture séquentielle ; les recommandations courantes sont le JBOD (chaque disque comme son propre répertoire de log indépendant, laissant Kafka répartir les partitions dessus) ou RAID10 quand on préfère la mise en miroir matérielle à la réplication propre de Kafka pour la résilience locale."
+          }
+        }
+      ]
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "fc-cleanup-delete",
+      "front": { "en": "What does cleanup.policy=delete do?", "fr": "Que fait cleanup.policy=delete ?" },
+      "back": {
+        "en": "Removes whole log segments once they age past retention.ms or the partition exceeds retention.bytes.",
+        "fr": "Supprime des segments de log entiers une fois qu'ils dépassent retention.ms ou que la partition dépasse retention.bytes."
+      }
+    },
+    {
+      "id": "fc-cleanup-compact",
+      "front": { "en": "What does cleanup.policy=compact do?", "fr": "Que fait cleanup.policy=compact ?" },
+      "back": {
+        "en": "Keeps only the latest record per key indefinitely, discarding older values for the same key as compaction runs.",
+        "fr": "Garde seulement le dernier record par clé indéfiniment, en écartant les anciennes valeurs de la même clé au fil de la compaction."
+      }
+    },
+    {
+      "id": "fc-tombstone-def",
+      "front": { "en": "What is a tombstone on a compacted topic?", "fr": "Qu'est-ce qu'un tombstone sur un topic compacté ?" },
+      "back": {
+        "en": "A record with a null value for a key, marking it for deletion; kept for delete.retention.ms before being fully purged.",
+        "fr": "Un record avec une valeur null pour une clé, marquant sa suppression ; conservé pendant delete.retention.ms avant purge complète."
+      }
+    },
+    {
+      "id": "fc-lag-def",
+      "front": { "en": "What does consumer lag measure?", "fr": "Que mesure le lag d'un consommateur ?" },
+      "back": {
+        "en": "The gap, per partition, between the latest offset and the consumer group's committed offset.",
+        "fr": "L'écart, par partition, entre l'offset le plus récent et l'offset validé du groupe de consommateurs."
+      }
+    },
+    {
+      "id": "fc-zero-lag-caveat",
+      "front": { "en": "Is zero lag on its own proof that a consumer is healthy?", "fr": "Un lag nul prouve-t-il à lui seul qu'un consommateur est en bonne santé ?" },
+      "back": {
+        "en": "Not conclusively: it can also just mean no new data has arrived; the trend under real traffic matters more than one reading.",
+        "fr": "Pas de façon concluante : cela peut aussi simplement vouloir dire qu'aucune nouvelle donnée n'est arrivée ; la tendance sous trafic réel compte plus qu'une seule mesure."
+      }
+    },
+    {
+      "id": "fc-growing-lag-cause",
+      "front": { "en": "What does steadily growing, unrecovering lag usually mean?", "fr": "Que signifie en général un lag qui croît régulièrement sans se résorber ?" },
+      "back": {
+        "en": "The consumer processes slower than data arrives, or is stuck/crashed, and needs more parallelism, faster processing, or investigation.",
+        "fr": "Le consommateur traite plus lentement que les données n'arrivent, ou est bloqué/crashé, et nécessite plus de parallélisme, un traitement plus rapide, ou une investigation."
+      }
+    },
+    {
+      "id": "fc-more-partitions-tradeoff",
+      "front": { "en": "What's the cost side of adding more partitions to a topic?", "fr": "Quel est le coût d'ajouter plus de partitions à un topic ?" },
+      "back": {
+        "en": "More open file handles per broker, more replication traffic, and longer leader election / controller failover times.",
+        "fr": "Plus de descripteurs de fichiers ouverts par broker, plus de trafic de réplication, et des temps d'élection de leader / bascule du contrôleur plus longs."
+      }
+    },
+    {
+      "id": "fc-page-cache-reliance",
+      "front": { "en": "Why do Kafka brokers typically run a modest JVM heap instead of a huge one?", "fr": "Pourquoi les brokers Kafka tournent-ils en général avec un tas JVM modeste plutôt qu'énorme ?" },
+      "back": {
+        "en": "Sequential log reads/writes are served efficiently from the OS page cache; a huge heap mostly adds GC pause risk without much benefit.",
+        "fr": "Les lectures/écritures séquentielles du log sont servies efficacement depuis le page cache du système ; un tas énorme ajoute surtout un risque de pauses GC sans grand bénéfice."
+      }
+    },
+    {
+      "id": "fc-under-replicated-def",
+      "front": { "en": "What is an under-replicated partition?", "fr": "Qu'est-ce qu'une partition sous-répliquée ?" },
+      "back": {
+        "en": "A partition whose ISR is smaller than its configured replication factor, a key health signal worth alerting on.",
+        "fr": "Une partition dont l'ISR est plus petite que son facteur de réplication configuré, un signal de santé clé digne d'une alerte."
+      }
+    },
+    {
+      "id": "fc-raid-gotcha",
+      "front": { "en": "Why is RAID5/6 usually discouraged for Kafka log disks?", "fr": "Pourquoi RAID5/6 est-il en général déconseillé pour les disques de log Kafka ?" },
+      "back": {
+        "en": "Parity calculation adds write overhead that works against Kafka's sequential-write-heavy workload; JBOD or RAID10 are the common alternatives.",
+        "fr": "Le calcul de parité ajoute une surcharge d'écriture qui va à l'encontre de la charge très orientée écriture séquentielle de Kafka ; JBOD ou RAID10 sont les alternatives courantes."
+      }
+    },
+    {
+      "id": "fc-min-compaction-lag",
+      "front": { "en": "What does min.compaction.lag.ms control?", "fr": "Que contrôle min.compaction.lag.ms ?" },
+      "back": {
+        "en": "The minimum time a record must sit in the log before becoming eligible for compaction.",
+        "fr": "Le temps minimum qu'un record doit passer dans le log avant de devenir éligible à la compaction."
+      }
+    },
+    {
+      "id": "fc-compact-delete-combo",
+      "front": { "en": "What does cleanup.policy=\"compact,delete\" combine?", "fr": "Que combine cleanup.policy=\"compact,delete\" ?" },
+      "back": {
+        "en": "Keeping the latest value per key (compact) while also purging segments older than retention.ms (delete), so it doesn't grow unbounded.",
+        "fr": "Garder la dernière valeur par clé (compact) tout en purgeant aussi les segments plus vieux que retention.ms (delete), pour ne pas croître indéfiniment."
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-cleanup-policy-choice",
+      "kind": "mcq",
+      "prompt": {
+        "en": "You need a topic that always holds the current state of every user profile, keyed by user id, forever, regardless of how old the last update is. Which cleanup policy fits?",
+        "fr": "Vous avez besoin d'un topic qui contient toujours l'état courant de chaque profil utilisateur, par id utilisateur, indéfiniment, quel que soit l'âge de la dernière mise à jour. Quelle politique de nettoyage convient ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "delete", "fr": "delete" } },
+        { "id": "b", "label": { "en": "compact", "fr": "compact" } },
+        { "id": "c", "label": { "en": "Neither, disable cleanup entirely", "fr": "Aucune des deux, désactiver le nettoyage entièrement" } },
+        { "id": "d", "label": { "en": "delete with retention.ms=-1", "fr": "delete avec retention.ms=-1" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "compact is exactly designed for \"latest state per key, forever\": time-based retention (delete) would eventually purge profiles that haven't been updated recently, even though they're still valid current state.",
+        "fr": "compact est précisément conçu pour \"dernier état par clé, indéfiniment\" : une rétention basée sur le temps (delete) finirait par purger des profils non mis à jour récemment, alors qu'ils restent un état courant valide."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-tombstone-missed",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A compacted topic has delete.retention.ms=86400000 (24 hours). A tombstone for key \"user-9\" is written at 10:00 on Monday. A consumer that had been offline resumes reading at 10:00 on Wednesday, well after the tombstone's retention window. What does it see for \"user-9\"?",
+        "fr": "Un topic compacté a delete.retention.ms=86400000 (24 heures). Un tombstone pour la clé \"user-9\" est écrit lundi à 10h00. Un consommateur qui était hors ligne reprend sa lecture mercredi à 10h00, bien après la fenêtre de rétention du tombstone. Que voit-il pour \"user-9\" ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "The tombstone, since deletions are never actually purged", "fr": "Le tombstone, car les suppressions ne sont jamais réellement purgées" } },
+        { "id": "b", "label": { "en": "Nothing at all for that key: the tombstone has already been fully removed by compaction after its retention window passed, so the consumer never learns \"user-9\" was deleted, it just never sees it again", "fr": "Rien du tout pour cette clé : le tombstone a déjà été entièrement retiré par la compaction une fois sa fenêtre de rétention passée, donc le consommateur n'apprend jamais que \"user-9\" a été supprimé, il ne le revoit simplement plus" } },
+        { "id": "c", "label": { "en": "The last non-null value for \"user-9\", as if the deletion never happened", "fr": "La dernière valeur non nulle pour \"user-9\", comme si la suppression n'avait jamais eu lieu" } },
+        { "id": "d", "label": { "en": "An error, since the consumer is too far behind", "fr": "Une erreur, car le consommateur est trop en retard" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "delete.retention.ms only guarantees the tombstone is visible for that long, precisely so timely consumers see the deletion. A consumer arriving after that window has closed simply never encounters the key again, with no explicit deletion event, since the tombstone itself has already been compacted away.",
+        "fr": "delete.retention.ms garantit seulement que le tombstone est visible pendant cette durée, précisément pour que les consommateurs à jour voient la suppression. Un consommateur arrivant après la fermeture de cette fenêtre ne rencontre simplement plus jamais la clé, sans événement de suppression explicite, puisque le tombstone lui-même a déjà été compacté."
+      },
+      "difficulty": 3
+    },
+    {
+      "id": "ex-overpartition-future-proof",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team creates a new topic with 200 partitions for an event type expected to produce a few messages per minute, reasoning \"more partitions means more future-proof scalability\". A year later, cluster metadata operations and controller failovers have gotten noticeably slower. Find the bug.",
+        "fr": "Une équipe crée un nouveau topic avec 200 partitions pour un type d'événement censé produire quelques messages par minute, en se disant \"plus de partitions, c'est plus évolutif pour l'avenir\". Un an plus tard, les opérations de métadonnées du cluster et les bascules de contrôleur sont sensiblement plus lentes. Trouvez le bug."
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "The topic should have used compaction instead", "fr": "Le topic aurait dû utiliser la compaction à la place" } },
+        { "id": "b", "label": { "en": "200 partitions for a few messages a minute is wildly over-provisioned: it adds real, ongoing cluster-wide cost (metadata size, replication overhead, longer recovery) for parallelism that traffic this low will never use", "fr": "200 partitions pour quelques messages par minute est largement sur-dimensionné : cela ajoute un coût réel et permanent à l'échelle du cluster (taille des métadonnées, surcharge de réplication, reprise plus longue) pour un parallélisme qu'un trafic aussi faible n'exploitera jamais" } },
+        { "id": "c", "label": { "en": "Partition count has no effect on controller failover time", "fr": "Le nombre de partitions n'a aucun effet sur le temps de bascule du contrôleur" } },
+        { "id": "d", "label": { "en": "The fix is to increase replication.factor to compensate", "fr": "Le correctif est d'augmenter replication.factor pour compenser" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Partition count should be sized to a realistic target throughput, not maximized speculatively. Every partition across every topic contributes to cluster-wide metadata and recovery cost, and that cost is paid continuously whether or not the extra parallelism is ever used.",
+        "fr": "Le nombre de partitions doit être dimensionné pour un débit cible réaliste, pas maximisé de façon spéculative. Chaque partition, sur chaque topic, contribue au coût de métadonnées et de reprise à l'échelle du cluster, et ce coût est payé en continu, que le parallélisme supplémentaire soit utilisé ou non."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-heap-sizing-mcq",
+      "kind": "mcq",
+      "prompt": {
+        "en": "Why do Kafka broker deployments typically avoid giving the JVM a very large heap (e.g. most of the machine's RAM)?",
+        "fr": "Pourquoi les déploiements de brokers Kafka évitent-ils en général de donner un très gros tas JVM (par ex. la majeure partie de la RAM de la machine) ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Kafka does not support heaps larger than 4 GB", "fr": "Kafka ne supporte pas les tas de plus de 4 Go" } },
+        { "id": "b", "label": { "en": "Kafka relies on the OS page cache for efficient sequential log I/O; a huge heap mostly adds GC pause risk while leaving less RAM for that cache", "fr": "Kafka s'appuie sur le page cache du système pour des I/O de log séquentielles efficaces ; un gros tas ajoute surtout un risque de pauses GC tout en laissant moins de RAM pour ce cache" } },
+        { "id": "c", "label": { "en": "A large heap disables replication", "fr": "Un gros tas désactive la réplication" } },
+        { "id": "d", "label": { "en": "There is no real reason, it's purely a legacy convention", "fr": "Il n'y a pas de vraie raison, c'est purement une convention historique" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "The broker's own heap needs are modest; the real performance lever is leaving enough RAM for the OS page cache, which is what actually makes sequential log reads and writes fast, and avoiding the long GC pauses a bloated heap risks.",
+        "fr": "Les besoins en tas du broker lui-même sont modestes ; le vrai levier de performance est de laisser assez de RAM pour le page cache du système, qui est ce qui rend réellement les lectures et écritures séquentielles du log rapides, tout en évitant les longues pauses GC qu'un tas surdimensionné risquerait."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-urp-spike-restart",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A broker is restarted for a routine OS patch. Right after it comes back, the cluster's under-replicated partitions metric spikes, then returns to zero within a couple of minutes. Is this a problem?",
+        "fr": "Un broker est redémarré pour un correctif OS de routine. Juste après son retour, la métrique de partitions sous-répliquées du cluster grimpe, puis revient à zéro en quelques minutes. Est-ce un problème ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Yes, any under-replicated partition spike means data was lost", "fr": "Oui, tout pic de partitions sous-répliquées signifie une perte de données" } },
+        { "id": "b", "label": { "en": "No, a brief spike right after a broker restart is expected while the restarted broker's replicas catch back up; a sustained, non-recovering increase would be the actual problem", "fr": "Non, un pic bref juste après un redémarrage de broker est attendu pendant que les répliques du broker redémarré rattrapent leur retard ; une hausse soutenue et persistante serait le vrai problème" } },
+        { "id": "c", "label": { "en": "Yes, the cluster should be immediately failed over to a backup", "fr": "Oui, le cluster devrait immédiatement basculer vers un backup" } },
+        { "id": "d", "label": { "en": "It means unclean leader election occurred", "fr": "Cela signifie qu'une élection non propre de leader a eu lieu" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "A restarted broker's replicas are briefly behind and fall out of the ISR until they catch up, which is exactly what a short-lived spike reflects. The signal to actually worry about is a sustained or growing count that does not recover.",
+        "fr": "Les répliques d'un broker redémarré sont brièvement en retard et sortent de l'ISR jusqu'à rattraper leur retard, ce qu'un pic de courte durée reflète exactement. Le signal qui doit réellement inquiéter est un décompte soutenu ou croissant qui ne se résorbe pas."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-raid5-choice",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "An infrastructure team provisions Kafka broker disks in RAID5, following their general \"always use RAID5 or 6 for redundancy\" storage policy. Broker write throughput ends up noticeably worse than expected. Find the bug.",
+        "fr": "Une équipe infra provisionne les disques des brokers Kafka en RAID5, en suivant sa politique de stockage générale \"toujours utiliser RAID5 ou 6 pour la redondance\". Le débit d'écriture des brokers finit par être sensiblement inférieur aux attentes. Trouvez le bug."
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "RAID5's parity calculation overhead works against Kafka's sequential-write-heavy workload; JBOD or RAID10 are the usual recommendations instead, letting Kafka's own replication provide redundancy", "fr": "La surcharge de calcul de parité de RAID5 va à l'encontre de la charge de travail de Kafka, très orientée écriture séquentielle ; JBOD ou RAID10 sont recommandés à la place, en laissant la réplication propre de Kafka assurer la redondance" } },
+        { "id": "b", "label": { "en": "The disks themselves must be defective", "fr": "Les disques eux-mêmes doivent être défectueux" } },
+        { "id": "c", "label": { "en": "RAID5 only affects read throughput, not writes", "fr": "RAID5 n'affecte que le débit en lecture, pas en écriture" } },
+        { "id": "d", "label": { "en": "There is no bug, this is expected and fine for Kafka", "fr": "Il n'y a pas de bug, c'est attendu et adapté pour Kafka" } }
+      ],
+      "answerId": "a",
+      "explanation": {
+        "en": "A general-purpose \"always RAID5/6\" policy ignores Kafka's specific workload: it already replicates data itself, so hardware-level redundancy at the cost of parity write overhead is usually the wrong tradeoff; JBOD or RAID10 are the standard guidance for Kafka log disks.",
+        "fr": "Une politique générique \"toujours RAID5/6\" ignore la charge de travail spécifique de Kafka : il réplique déjà lui-même ses données, donc la redondance matérielle au prix d'une surcharge d'écriture de parité est en général le mauvais compromis ; JBOD ou RAID10 sont la recommandation standard pour les disques de log Kafka."
+      },
+      "difficulty": 2
+    }
+  ]
+}

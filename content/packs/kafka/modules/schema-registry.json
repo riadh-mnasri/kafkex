@@ -1,0 +1,344 @@
+{
+  "id": "schema-registry",
+  "title": { "en": "Schema Registry", "fr": "Schema Registry" },
+  "tagline": {
+    "en": "Avro/Protobuf, compatibility modes, evolution",
+    "fr": "Avro/Protobuf, modes de compatibilité, évolution"
+  },
+  "icon": "📋",
+  "lessons": [
+    {
+      "id": "why-schemas",
+      "title": { "en": "Why a schema registry", "fr": "Pourquoi un schema registry" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Kafka records are just bytes; it enforces no schema on its own. A schema registry (Avro, Protobuf or JSON Schema) gives producers and consumers a shared, versioned contract for record shape, and a central place to check whether a new schema version is safe to roll out.",
+            "fr": "Les records Kafka ne sont que des octets ; Kafka n'impose aucun schéma par lui-même. Un schema registry (Avro, Protobuf ou JSON Schema) donne aux producteurs et consommateurs un contrat partagé et versionné pour la forme des records, et un endroit central pour vérifier si une nouvelle version de schéma peut être déployée sans risque."
+          }
+        },
+        {
+          "type": "code",
+          "code": "[magic byte][4-byte schema id][serialized payload]",
+          "caption": {
+            "en": "The wire format never embeds the full schema: only a small numeric id, resolved against the registry.",
+            "fr": "Le format sur le fil n'embarque jamais le schéma complet : seulement un petit id numérique, résolu auprès du registry."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "Because only a 4-byte id travels on the wire instead of a full schema, payloads stay small even for verbose schemas, and clients cache the schema-id-to-schema mapping after the first lookup.",
+            "fr": "Comme seul un id de 4 octets circule sur le fil au lieu d'un schéma complet, les payloads restent compacts même pour des schémas verbeux, et les clients mettent en cache la correspondance id-vers-schéma après la première consultation."
+          }
+        }
+      ]
+    },
+    {
+      "id": "compatibility-modes",
+      "title": { "en": "Compatibility modes", "fr": "Modes de compatibilité" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "BACKWARD compatibility means a new schema can read data written with the previous one: consumers can safely upgrade to the new schema before all producers have. FORWARD compatibility means the previous schema can still read data written with the new one: producers can safely upgrade before all consumers have.",
+            "fr": "La compatibilité BACKWARD signifie qu'un nouveau schéma peut lire des données écrites avec le précédent : les consommateurs peuvent passer au nouveau schéma en toute sécurité avant que tous les producteurs ne l'aient fait. La compatibilité FORWARD signifie que le schéma précédent peut encore lire des données écrites avec le nouveau : les producteurs peuvent passer au nouveau schéma avant que tous les consommateurs ne l'aient fait."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "FULL compatibility requires both directions at once. Each mode also has a _TRANSITIVE variant (BACKWARD_TRANSITIVE, FORWARD_TRANSITIVE, FULL_TRANSITIVE) that checks the new schema against every previously registered version for the subject, not just the immediately preceding one.",
+            "fr": "La compatibilité FULL exige les deux directions à la fois. Chaque mode a aussi une variante _TRANSITIVE (BACKWARD_TRANSITIVE, FORWARD_TRANSITIVE, FULL_TRANSITIVE) qui vérifie le nouveau schéma par rapport à chaque version précédemment enregistrée pour le sujet, pas seulement la version immédiatement précédente."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Non-transitive BACKWARD only guarantees safety against the immediately previous version. If a consumer is two versions behind, a chain of individually-compatible changes can still combine into something it can't read; BACKWARD_TRANSITIVE is the mode that actually protects lagging consumers.",
+            "fr": "BACKWARD non transitif ne garantit la sécurité que par rapport à la version immédiatement précédente. Si un consommateur a deux versions de retard, une chaîne de changements individuellement compatibles peut quand même se combiner en quelque chose qu'il ne peut pas lire ; BACKWARD_TRANSITIVE est le mode qui protège réellement les consommateurs en retard."
+          }
+        }
+      ]
+    },
+    {
+      "id": "schema-evolution",
+      "title": { "en": "Safe evolution rules", "fr": "Règles d'évolution sûres" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Adding a field with a default value is backward compatible: old data lacking that field is read with the default filled in. Removing a field that had a default is also backward compatible for the same reason, symmetrically.",
+            "fr": "Ajouter un champ avec une valeur par défaut est compatible en arrière (backward) : les anciennes données sans ce champ sont lues avec le défaut renseigné. Supprimer un champ qui avait un défaut est aussi compatible en arrière, symétriquement, pour la même raison."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Renaming a field is not compatible in general: to the schema format, it looks like removing one field and adding an unrelated one, so old readers lose the value under its old name and gain nothing under the new one (unless the format has an explicit alias mechanism, which Avro does support).",
+            "fr": "Renommer un champ n'est en général pas compatible : pour le format de schéma, cela ressemble à la suppression d'un champ et à l'ajout d'un autre sans rapport, donc les anciens lecteurs perdent la valeur sous son ancien nom et n'en gagnent rien sous le nouveau (sauf si le format dispose d'un mécanisme d'alias explicite, ce qu'Avro supporte)."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "Changing a field's type is usually breaking, even between seemingly close types (int to string, for instance), unless the target format defines an explicit promotion rule (Avro allows some numeric widenings, like int to long, as compatible).",
+            "fr": "Changer le type d'un champ est généralement une rupture, même entre types apparemment proches (int vers string, par exemple), sauf si le format cible définit une règle de promotion explicite (Avro autorise certains élargissements numériques, comme int vers long, en tant que compatibles)."
+          }
+        }
+      ]
+    },
+    {
+      "id": "subjects-strategy",
+      "title": { "en": "Subjects & naming strategies", "fr": "Sujets & stratégies de nommage" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "A subject is the named, versioned history of schemas checked for compatibility together, one evolving line of schema versions. The default, TopicNameStrategy, creates one subject per topic and side (e.g. orders-value, orders-key): every message's value on that topic must conform to one single evolving schema line.",
+            "fr": "Un sujet est l'historique nommé et versionné de schémas vérifiés ensemble pour la compatibilité, une lignée de versions de schéma qui évolue. La stratégie par défaut, TopicNameStrategy, crée un sujet par topic et par côté (par ex. orders-value, orders-key) : chaque valeur de message sur ce topic doit se conformer à une seule et même lignée de schéma."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Putting several unrelated event types on one topic under the default TopicNameStrategy forces them all into the same subject's compatibility history, so an evolution that is safe for one event type can be rejected because it looks incompatible from another type's perspective within the same subject.",
+            "fr": "Mettre plusieurs types d'événements sans rapport sur un seul topic sous la TopicNameStrategy par défaut les force tous dans le même historique de compatibilité d'un sujet unique, donc une évolution sûre pour un type d'événement peut être rejetée parce qu'elle semble incompatible du point de vue d'un autre type au sein du même sujet."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "RecordNameStrategy scopes subjects by the record's own fully-qualified name instead of the topic, so several distinct event types can coexist on one topic, each with its own independent schema evolution history.",
+            "fr": "RecordNameStrategy scope les sujets par le nom pleinement qualifié du record lui-même plutôt que par le topic, si bien que plusieurs types d'événements distincts peuvent coexister sur un topic, chacun avec son propre historique d'évolution de schéma indépendant."
+          }
+        }
+      ]
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "fc-schema-registry-purpose",
+      "front": { "en": "What problem does a schema registry solve?", "fr": "Quel problème résout un schema registry ?" },
+      "back": {
+        "en": "It avoids embedding a full schema in every message: producers and consumers exchange a small schema id, and the registry is the source of truth for what it means.",
+        "fr": "Il évite d'embarquer un schéma complet dans chaque message : producteurs et consommateurs échangent un petit id de schéma, et le registry fait autorité sur ce qu'il signifie."
+      }
+    },
+    {
+      "id": "fc-wire-format",
+      "front": { "en": "What does a schema-registry-encoded message contain on the wire?", "fr": "Que contient un message encodé via schema registry sur le fil ?" },
+      "back": {
+        "en": "A magic byte, a 4-byte schema id, then the serialized payload; no embedded schema.",
+        "fr": "Un magic byte, un id de schéma sur 4 octets, puis le payload sérialisé ; aucun schéma embarqué."
+      }
+    },
+    {
+      "id": "fc-backward-def",
+      "front": { "en": "What does BACKWARD compatibility mean?", "fr": "Que signifie la compatibilité BACKWARD ?" },
+      "back": {
+        "en": "A new schema can read data written with the previous one; consumers can upgrade before producers.",
+        "fr": "Un nouveau schéma peut lire des données écrites avec le précédent ; les consommateurs peuvent migrer avant les producteurs."
+      }
+    },
+    {
+      "id": "fc-forward-def",
+      "front": { "en": "What does FORWARD compatibility mean?", "fr": "Que signifie la compatibilité FORWARD ?" },
+      "back": {
+        "en": "The previous schema can still read data written with the new one; producers can upgrade before consumers.",
+        "fr": "Le schéma précédent peut encore lire des données écrites avec le nouveau ; les producteurs peuvent migrer avant les consommateurs."
+      }
+    },
+    {
+      "id": "fc-full-def",
+      "front": { "en": "What does FULL compatibility require?", "fr": "Que requiert la compatibilité FULL ?" },
+      "back": {
+        "en": "Both backward and forward compatibility between the new schema and the previous one, at once.",
+        "fr": "À la fois la compatibilité backward et forward entre le nouveau schéma et le précédent."
+      }
+    },
+    {
+      "id": "fc-transitive-diff",
+      "front": { "en": "What does the _TRANSITIVE suffix add to a compatibility mode?", "fr": "Que rajoute le suffixe _TRANSITIVE à un mode de compatibilité ?" },
+      "back": {
+        "en": "It checks the new schema against every previously registered version for the subject, not just the immediately preceding one.",
+        "fr": "Il vérifie le nouveau schéma par rapport à chaque version précédemment enregistrée pour le sujet, pas seulement la version immédiatement précédente."
+      }
+    },
+    {
+      "id": "fc-add-field-default",
+      "front": { "en": "Is adding a field with a default value backward compatible?", "fr": "Ajouter un champ avec une valeur par défaut est-il compatible en arrière ?" },
+      "back": {
+        "en": "Yes: old data lacking that field is read with the default filled in.",
+        "fr": "Oui : les anciennes données sans ce champ sont lues avec le défaut renseigné."
+      }
+    },
+    {
+      "id": "fc-rename-field",
+      "front": { "en": "Is renaming a field generally compatible?", "fr": "Renommer un champ est-il généralement compatible ?" },
+      "back": {
+        "en": "No: it looks like removing one field and adding an unrelated one, unless the format supports explicit aliases.",
+        "fr": "Non : cela ressemble à la suppression d'un champ et à l'ajout d'un autre sans rapport, sauf si le format supporte des alias explicites."
+      }
+    },
+    {
+      "id": "fc-subject-def",
+      "front": { "en": "What is a \"subject\" in Schema Registry?", "fr": "Qu'est-ce qu'un \"sujet\" (subject) dans Schema Registry ?" },
+      "back": {
+        "en": "The named, versioned history of schemas checked for compatibility together, one evolving schema line.",
+        "fr": "L'historique nommé et versionné de schémas vérifiés ensemble pour la compatibilité, une lignée de schéma qui évolue."
+      }
+    },
+    {
+      "id": "fc-topic-name-strategy",
+      "front": { "en": "What is the default subject naming strategy?", "fr": "Quelle est la stratégie de nommage de sujet par défaut ?" },
+      "back": {
+        "en": "TopicNameStrategy: one subject per topic and side (e.g. orders-value).",
+        "fr": "TopicNameStrategy : un sujet par topic et par côté (par ex. orders-value)."
+      }
+    },
+    {
+      "id": "fc-record-name-strategy",
+      "front": { "en": "When should you use RecordNameStrategy instead?", "fr": "Quand utiliser RecordNameStrategy à la place ?" },
+      "back": {
+        "en": "When a single topic carries multiple distinct event types, so each gets its own independent schema evolution history.",
+        "fr": "Quand un seul topic transporte plusieurs types d'événements distincts, afin que chacun ait son propre historique d'évolution de schéma indépendant."
+      }
+    },
+    {
+      "id": "fc-incompatible-rejected",
+      "front": { "en": "What happens if a producer registers an incompatible schema change?", "fr": "Que se passe-t-il si un producteur enregistre un changement de schéma incompatible ?" },
+      "back": {
+        "en": "The registry rejects the registration per the subject's compatibility mode, and the produce call fails before anything is written.",
+        "fr": "Le registry rejette l'enregistrement selon le mode de compatibilité du sujet, et l'appel de production échoue avant toute écriture."
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-upgrade-order",
+      "kind": "mcq",
+      "prompt": {
+        "en": "Your rollout plan requires consumers to upgrade to a new schema version before all producers have switched to it. Which compatibility mode does this require?",
+        "fr": "Votre plan de déploiement exige que les consommateurs migrent vers une nouvelle version de schéma avant que tous les producteurs ne l'aient adoptée. Quel mode de compatibilité cela requiert-il ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "FORWARD", "fr": "FORWARD" } },
+        { "id": "b", "label": { "en": "BACKWARD", "fr": "BACKWARD" } },
+        { "id": "c", "label": { "en": "NONE", "fr": "NONE" } },
+        { "id": "d", "label": { "en": "Compatibility mode does not affect rollout order", "fr": "Le mode de compatibilité n'affecte pas l'ordre de déploiement" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "BACKWARD compatibility means the new schema can read data written with the old one, which is exactly what lets consumers safely upgrade first while some producers are still on the old schema.",
+        "fr": "La compatibilité BACKWARD signifie que le nouveau schéma peut lire des données écrites avec l'ancien, ce qui est exactement ce qui permet aux consommateurs de migrer en premier en toute sécurité pendant que certains producteurs sont encore sur l'ancien schéma."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-remove-required-field",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A subject is set to BACKWARD compatibility. A producer tries to register a new schema that removes a required field (no default value) that the previous schema had. What happens?",
+        "fr": "Un sujet est configuré en compatibilité BACKWARD. Un producteur essaie d'enregistrer un nouveau schéma qui supprime un champ requis (sans valeur par défaut) présent dans le schéma précédent. Que se passe-t-il ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "The registration succeeds; missing required fields are silently ignored", "fr": "L'enregistrement réussit ; les champs requis manquants sont ignorés silencieusement" } },
+        { "id": "b", "label": { "en": "The registration is rejected: without a default, new readers cannot fill in a value for old data that has the field, or the check fails depending on direction, either way it's unsafe and blocked", "fr": "L'enregistrement est rejeté : sans défaut, les nouveaux lecteurs ne peuvent pas remplir de valeur pour les anciennes données qui ont le champ, ou la vérification échoue selon le sens ; dans tous les cas c'est jugé dangereux et bloqué" } },
+        { "id": "c", "label": { "en": "The field is automatically given a default of null regardless of type", "fr": "Le champ reçoit automatiquement un défaut à null quel que soit le type" } },
+        { "id": "d", "label": { "en": "Only FULL mode would reject this, BACKWARD allows it", "fr": "Seul le mode FULL rejetterait ceci, BACKWARD l'autorise" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Removing a field without a default breaks the safe evolution rule: there is no fallback value to reconcile old and new schemas, so the registry's compatibility check rejects the registration under BACKWARD.",
+        "fr": "Supprimer un champ sans défaut casse la règle d'évolution sûre : il n'y a pas de valeur de repli pour réconcilier ancien et nouveau schéma, donc la vérification de compatibilité du registry rejette l'enregistrement en mode BACKWARD."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-rename-assumption",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A developer renames the field \"user_id\" to \"customer_id\" in an Avro schema, expecting it to be backward compatible since \"it's the same data, just a clearer name\". Schema registration is rejected. Find the bug in their assumption.",
+        "fr": "Un développeur renomme le champ \"user_id\" en \"customer_id\" dans un schéma Avro, en s'attendant à ce que ce soit compatible en arrière puisque \"c'est la même donnée, juste un nom plus clair\". L'enregistrement du schéma est rejeté. Trouvez le bug dans son hypothèse."
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Field names never matter for compatibility, so this should have succeeded; it's a registry bug", "fr": "Le nom des champs n'a jamais d'importance pour la compatibilité, donc cela aurait dû réussir ; c'est un bug du registry" } },
+        { "id": "b", "label": { "en": "Without an explicit alias, a rename looks like removing \"user_id\" and adding an unrelated new field \"customer_id\", which old readers can't reconcile", "fr": "Sans alias explicite, un renommage ressemble à la suppression de \"user_id\" et à l'ajout d'un nouveau champ \"customer_id\" sans rapport, que les anciens lecteurs ne peuvent pas réconcilier" } },
+        { "id": "c", "label": { "en": "Renames are only allowed in FORWARD mode, never BACKWARD", "fr": "Les renommages ne sont autorisés qu'en mode FORWARD, jamais en BACKWARD" } },
+        { "id": "d", "label": { "en": "The field type must have also changed for this to fail", "fr": "Le type du champ a dû aussi changer pour que cela échoue" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Schema compatibility checks reason about field names and types, not developer intent. A rename without Avro's explicit alias mechanism is indistinguishable from a remove-and-add, which fails the safe evolution rules.",
+        "fr": "Les vérifications de compatibilité de schéma raisonnent sur les noms et types de champs, pas sur l'intention du développeur. Un renommage sans le mécanisme d'alias explicite d'Avro est indiscernable d'une suppression suivie d'un ajout, ce qui échoue aux règles d'évolution sûre."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-wire-format-mcq",
+      "kind": "mcq",
+      "prompt": {
+        "en": "What does a Schema Registry client prepend to the serialized payload before producing a record?",
+        "fr": "Que préfixe un client Schema Registry au payload sérialisé avant de produire un record ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "The full schema definition, so any consumer can decode it standalone", "fr": "La définition complète du schéma, pour que tout consommateur puisse décoder sans dépendance" } },
+        { "id": "b", "label": { "en": "A magic byte and a 4-byte schema id", "fr": "Un magic byte et un id de schéma sur 4 octets" } },
+        { "id": "c", "label": { "en": "The topic name and partition number", "fr": "Le nom du topic et le numéro de partition" } },
+        { "id": "d", "label": { "en": "Nothing; the schema is inferred from the consumer group", "fr": "Rien ; le schéma est déduit du groupe de consommateurs" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "The compact wire format is a magic byte followed by a 4-byte schema id, letting consumers resolve the actual schema from the registry (with caching) instead of shipping it on every message.",
+        "fr": "Le format compact sur le fil est un magic byte suivi d'un id de schéma sur 4 octets, permettant aux consommateurs de résoudre le schéma réel auprès du registry (avec mise en cache) au lieu de l'expédier à chaque message."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-transitive-chain",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A subject has 3 registered schema versions: v1, v2, v3. v2 to v3 is individually backward compatible, and v1 to v2 was also individually backward compatible, but v1 to v3 combined is not. With plain BACKWARD (non-transitive) mode, does registering v3 succeed?",
+        "fr": "Un sujet a 3 versions de schéma enregistrées : v1, v2, v3. v2 vers v3 est individuellement compatible en arrière, et v1 vers v2 l'était aussi individuellement, mais v1 vers v3 combiné ne l'est pas. En mode BACKWARD simple (non transitif), l'enregistrement de v3 réussit-il ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Yes, because non-transitive BACKWARD only checks the new schema against the immediately previous version (v2), which passes", "fr": "Oui, car BACKWARD non transitif ne vérifie le nouveau schéma que par rapport à la version immédiatement précédente (v2), qui passe" } },
+        { "id": "b", "label": { "en": "No, because BACKWARD always checks against every previous version by default", "fr": "Non, car BACKWARD vérifie toujours par rapport à chaque version précédente par défaut" } },
+        { "id": "c", "label": { "en": "It depends on which broker handles the request", "fr": "Cela dépend du broker qui traite la requête" } },
+        { "id": "d", "label": { "en": "Registration always fails once 3 versions exist", "fr": "L'enregistrement échoue toujours une fois 3 versions atteintes" } }
+      ],
+      "answerId": "a",
+      "explanation": {
+        "en": "This is exactly the gap between BACKWARD and BACKWARD_TRANSITIVE: non-transitive mode only looks at the immediately preceding version, so a consumer still on v1 could break even though every single step was individually approved.",
+        "fr": "C'est exactement l'écart entre BACKWARD et BACKWARD_TRANSITIVE : le mode non transitif ne regarde que la version immédiatement précédente, donc un consommateur encore sur v1 pourrait casser même si chaque étape individuelle a été approuvée."
+      },
+      "difficulty": 3
+    },
+    {
+      "id": "ex-mixed-events-one-topic",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team puts both \"OrderCreated\" and \"OrderCancelled\" event types on the same topic, using the default subject naming strategy. Unrelated schema changes to one event type keep getting rejected because of the other event type's schema history. Find the bug.",
+        "fr": "Une équipe met les types d'événements \"OrderCreated\" et \"OrderCancelled\" sur le même topic, en utilisant la stratégie de nommage de sujet par défaut. Des changements de schéma sans rapport sur un type d'événement se font sans cesse rejeter à cause de l'historique de schéma de l'autre type. Trouvez le bug."
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "The topic needs more partitions", "fr": "Le topic a besoin de plus de partitions" } },
+        { "id": "b", "label": { "en": "TopicNameStrategy (the default) puts both event types in the same subject's compatibility history; RecordNameStrategy would give each event type its own independent subject", "fr": "TopicNameStrategy (le défaut) place les deux types d'événements dans l'historique de compatibilité du même sujet ; RecordNameStrategy donnerait à chaque type son propre sujet indépendant" } },
+        { "id": "c", "label": { "en": "Compatibility mode should be set to NONE to fix this", "fr": "Le mode de compatibilité devrait être réglé sur NONE pour corriger ça" } },
+        { "id": "d", "label": { "en": "Both event types must use exactly the same schema", "fr": "Les deux types d'événements doivent utiliser exactement le même schéma" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Under the default TopicNameStrategy, all messages on one topic share a single subject and thus one compatibility history. Switching to RecordNameStrategy scopes subjects by record type instead, letting OrderCreated and OrderCancelled evolve independently.",
+        "fr": "Sous la TopicNameStrategy par défaut, tous les messages d'un même topic partagent un seul sujet et donc un seul historique de compatibilité. Passer à RecordNameStrategy scope les sujets par type de record à la place, permettant à OrderCreated et OrderCancelled d'évoluer indépendamment."
+      },
+      "difficulty": 2
+    }
+  ]
+}

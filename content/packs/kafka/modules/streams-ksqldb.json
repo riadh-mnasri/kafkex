@@ -1,0 +1,337 @@
+{
+  "id": "streams-ksqldb",
+  "title": { "en": "Kafka Streams & ksqlDB", "fr": "Kafka Streams & ksqlDB" },
+  "tagline": {
+    "en": "KStream, KTable, state stores, windowing",
+    "fr": "KStream, KTable, state stores, fenêtrage"
+  },
+  "icon": "🌊",
+  "lessons": [
+    {
+      "id": "kstream-ktable",
+      "title": { "en": "KStream vs KTable", "fr": "KStream vs KTable" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "A KStream models an unbounded sequence of independent records: every record is a new, standalone fact (an event happened). A KTable models a changelog: every record is an upsert by key (or a delete when the value is null), representing the latest known state for that key.",
+            "fr": "Un KStream modélise une séquence non bornée de records indépendants : chaque record est un fait nouveau et autonome (un événement s'est produit). Une KTable modélise un changelog : chaque record est un upsert par clé (ou une suppression quand la valeur est null), représentant le dernier état connu pour cette clé."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "This is the stream-table duality: aggregating a stream by key produces a table (the running total, latest value, etc. per key); reading a table's changes over time is itself a stream of updates. Kafka Streams moves between the two constantly.",
+            "fr": "C'est la dualité stream-table : agréger un stream par clé produit une table (le total courant, la dernière valeur, etc. par clé) ; lire les changements d'une table dans le temps est lui-même un stream de mises à jour. Kafka Streams passe constamment de l'un à l'autre."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Reading a topic as a KTable collapses history: only the latest value per key is kept in the resulting table. If you actually need every individual event (not just the current state per key), read it as a KStream instead.",
+            "fr": "Lire un topic comme une KTable écrase l'historique : seule la dernière valeur par clé est conservée dans la table résultante. Si vous avez réellement besoin de chaque événement individuel (pas seulement l'état courant par clé), lisez-le plutôt comme un KStream."
+          }
+        }
+      ]
+    },
+    {
+      "id": "state-stores",
+      "title": { "en": "State stores", "fr": "State stores" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Stateful operations (aggregations, joins, deduplication) keep their state in a local state store, backed by RocksDB by default, held on disk next to the running task. Losing the instance would lose that local state, so it is continuously backed by a changelog topic (usually compacted) that Kafka Streams replays to rebuild the store on a new instance.",
+            "fr": "Les opérations avec état (agrégations, jointures, déduplication) gardent leur état dans un state store local, adossé à RocksDB par défaut, conservé sur disque à côté de la tâche en cours d'exécution. Perdre l'instance perdrait cet état local, donc il est continuellement sauvegardé par un topic changelog (généralement compacté) que Kafka Streams rejoue pour reconstruire le store sur une nouvelle instance."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "num.standby.replicas configures hot-standby copies of each state store, kept warm on other instances by continuously replaying the changelog. On failover, a standby takes over almost immediately instead of paying the cost of a full changelog replay from scratch.",
+            "fr": "num.standby.replicas configure des copies hot-standby de chaque state store, maintenues à jour sur d'autres instances par relecture continue du changelog. En cas de bascule, un standby prend le relais presque immédiatement au lieu de payer le coût d'une relecture complète du changelog depuis zéro."
+          }
+        }
+      ]
+    },
+    {
+      "id": "windowing",
+      "title": { "en": "Windowing", "fr": "Fenêtrage" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Tumbling windows are fixed-size and non-overlapping, back to back (every record belongs to exactly one window). Hopping windows are also fixed-size but advance by an interval smaller than their size, so they can overlap and a record can fall into several windows at once.",
+            "fr": "Les fenêtres tumbling sont de taille fixe et ne se chevauchent pas, bout à bout (chaque record appartient à exactement une fenêtre). Les fenêtres hopping sont aussi de taille fixe mais avancent par un intervalle plus petit que leur taille, donc elles peuvent se chevaucher et un record peut tomber dans plusieurs fenêtres à la fois."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "Session windows have no fixed size: records for the same key are grouped together as long as they arrive less than an inactivity gap apart, and the window closes once that gap elapses with no new record for that key.",
+            "fr": "Les fenêtres de session n'ont pas de taille fixe : les records d'une même clé sont regroupés tant qu'ils arrivent séparés de moins d'un délai d'inactivité, et la fenêtre se ferme une fois ce délai écoulé sans nouveau record pour cette clé."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "A window's grace period is not the same as its retention. Grace period is how long after a window's official end late records are still accepted and folded into an updated result; retention is how long the window's state is kept queryable at all afterward. A record arriving after the grace period is dropped, even if the window's state technically still exists.",
+            "fr": "La période de grâce d'une fenêtre n'est pas la même chose que sa rétention. La période de grâce est le temps après la fin officielle d'une fenêtre pendant lequel les records tardifs sont encore acceptés et intégrés à un résultat mis à jour ; la rétention est la durée pendant laquelle l'état de la fenêtre reste interrogeable ensuite. Un record arrivant après la période de grâce est écarté, même si l'état de la fenêtre existe encore techniquement."
+          }
+        }
+      ]
+    },
+    {
+      "id": "joins-ksqldb",
+      "title": { "en": "Joins & ksqlDB", "fr": "Jointures & ksqlDB" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "KStream-KTable joins are lookups, not windowed: each stream record is joined against the table's current value for that key at the moment it arrives. KStream-KStream joins are windowed: only records from both sides sharing a key and arriving within a configured time window are joined, since neither side has a notion of \"current value\" to look up.",
+            "fr": "Les jointures KStream-KTable sont des lookups, non fenêtrées : chaque record du stream est joint à la valeur courante de la table pour cette clé au moment où il arrive. Les jointures KStream-KStream sont fenêtrées : seuls les records des deux côtés partageant une clé et arrivant dans une fenêtre de temps configurée sont joints, car aucun des deux côtés n'a de notion de \"valeur courante\" à consulter."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "ksqlDB is a SQL layer over Kafka Streams: CREATE STREAM and CREATE TABLE define sources over existing topics, and a persistent query (CREATE STREAM ... AS SELECT ...) compiles to a running Streams topology that continuously writes its output to a new, dedicated Kafka topic.",
+            "fr": "ksqlDB est une couche SQL au-dessus de Kafka Streams : CREATE STREAM et CREATE TABLE définissent des sources sur des topics existants, et une requête persistante (CREATE STREAM ... AS SELECT ...) se compile en une topologie Streams en cours d'exécution qui écrit en continu sa sortie vers un nouveau topic Kafka dédié."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "KTable-KTable joins support foreign-key joins (joining on a field other than the primary key), unlike a plain KStream-KTable join which can only look up by the record's own key.",
+            "fr": "Les jointures KTable-KTable supportent les jointures par clé étrangère (joindre sur un champ autre que la clé primaire), contrairement à une jointure KStream-KTable classique qui ne peut faire de lookup que par la clé propre du record."
+          }
+        }
+      ]
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "fc-kstream-def",
+      "front": { "en": "What is a KStream?", "fr": "Qu'est-ce qu'un KStream ?" },
+      "back": {
+        "en": "An abstraction over an unbounded sequence of independent records; each record is a new, standalone fact.",
+        "fr": "Une abstraction sur une séquence non bornée de records indépendants ; chaque record est un fait nouveau et autonome."
+      }
+    },
+    {
+      "id": "fc-ktable-def",
+      "front": { "en": "What is a KTable?", "fr": "Qu'est-ce qu'une KTable ?" },
+      "back": {
+        "en": "An abstraction over a changelog: each record is an upsert by key (or a delete on a null value), representing the latest state per key.",
+        "fr": "Une abstraction sur un changelog : chaque record est un upsert par clé (ou une suppression sur valeur null), représentant le dernier état par clé."
+      }
+    },
+    {
+      "id": "fc-stream-table-duality",
+      "front": { "en": "What is the stream-table duality?", "fr": "Qu'est-ce que la dualité stream-table ?" },
+      "back": {
+        "en": "A stream aggregated by key becomes a table; a table's changes over time are themselves a stream of updates.",
+        "fr": "Un stream agrégé par clé devient une table ; les changements d'une table dans le temps sont eux-mêmes un stream de mises à jour."
+      }
+    },
+    {
+      "id": "fc-changelog-topic",
+      "front": { "en": "What backs a Kafka Streams state store for fault tolerance?", "fr": "Qu'est-ce qui sauvegarde un state store Kafka Streams pour la tolérance aux pannes ?" },
+      "back": {
+        "en": "A changelog topic (usually compacted) that gets replayed to rebuild the local RocksDB store after a restart or on a new instance.",
+        "fr": "Un topic changelog (généralement compacté) qui est rejoué pour reconstruire le store RocksDB local après un redémarrage ou sur une nouvelle instance."
+      }
+    },
+    {
+      "id": "fc-standby-replicas",
+      "front": { "en": "What does num.standby.replicas do?", "fr": "Que fait num.standby.replicas ?" },
+      "back": {
+        "en": "Keeps hot-standby copies of state stores warm on other instances via continuous changelog replay, for fast failover.",
+        "fr": "Maintient des copies hot-standby des state stores à jour sur d'autres instances via une relecture continue du changelog, pour une bascule rapide."
+      }
+    },
+    {
+      "id": "fc-tumbling-vs-hopping",
+      "front": { "en": "Tumbling vs hopping windows: what's the difference?", "fr": "Fenêtres tumbling vs hopping : quelle est la différence ?" },
+      "back": {
+        "en": "Tumbling windows are fixed-size, back-to-back and non-overlapping; hopping windows are fixed-size but advance by a smaller interval, so they can overlap.",
+        "fr": "Les fenêtres tumbling sont de taille fixe, bout à bout et sans chevauchement ; les fenêtres hopping sont de taille fixe mais avancent d'un intervalle plus petit, donc elles peuvent se chevaucher."
+      }
+    },
+    {
+      "id": "fc-session-window",
+      "front": { "en": "What is a session window?", "fr": "Qu'est-ce qu'une fenêtre de session ?" },
+      "back": {
+        "en": "A dynamically sized window grouping records by activity, closing once an inactivity gap elapses with no new record for that key.",
+        "fr": "Une fenêtre de taille dynamique regroupant les records par activité, qui se ferme une fois un délai d'inactivité écoulé sans nouveau record pour cette clé."
+      }
+    },
+    {
+      "id": "fc-grace-period",
+      "front": { "en": "What is a window's grace period?", "fr": "Qu'est-ce que la période de grâce d'une fenêtre ?" },
+      "back": {
+        "en": "The time after a window's official end during which late records are still accepted; after it, late records are dropped.",
+        "fr": "Le délai après la fin officielle d'une fenêtre pendant lequel les records tardifs sont encore acceptés ; passé ce délai, les records tardifs sont écartés."
+      }
+    },
+    {
+      "id": "fc-kstream-ktable-join",
+      "front": { "en": "Is a KStream-KTable join windowed?", "fr": "Une jointure KStream-KTable est-elle fenêtrée ?" },
+      "back": {
+        "en": "No, it's a non-windowed lookup: each stream record is joined against the table's current value for that key.",
+        "fr": "Non, c'est un lookup non fenêtré : chaque record du stream est joint à la valeur courante de la table pour cette clé."
+      }
+    },
+    {
+      "id": "fc-kstream-kstream-join",
+      "front": { "en": "Is a KStream-KStream join windowed?", "fr": "Une jointure KStream-KStream est-elle fenêtrée ?" },
+      "back": {
+        "en": "Yes, it must be: only same-key records from both streams arriving within the configured time window are joined.",
+        "fr": "Oui, elle doit l'être : seuls les records de même clé des deux streams arrivant dans la fenêtre de temps configurée sont joints."
+      }
+    },
+    {
+      "id": "fc-ksqldb-def",
+      "front": { "en": "What is ksqlDB?", "fr": "Qu'est-ce que ksqlDB ?" },
+      "back": {
+        "en": "A SQL layer over Kafka Streams; a persistent query compiles to a running Streams topology writing to a new backing topic.",
+        "fr": "Une couche SQL au-dessus de Kafka Streams ; une requête persistante se compile en une topologie Streams en cours d'exécution qui écrit vers un nouveau topic de sauvegarde."
+      }
+    },
+    {
+      "id": "fc-foreign-key-join",
+      "front": { "en": "Which join type supports foreign-key joins (not on the record's own key)?", "fr": "Quel type de jointure supporte les jointures par clé étrangère (pas la clé propre du record) ?" },
+      "back": {
+        "en": "KTable-KTable joins.",
+        "fr": "Les jointures KTable-KTable."
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-bursty-window",
+      "kind": "mcq",
+      "prompt": {
+        "en": "You want to group a user's clicks into \"browsing sessions\", where a new session starts after 30 minutes of inactivity, with no fixed session length. Which window type fits?",
+        "fr": "Vous voulez regrouper les clics d'un utilisateur en \"sessions de navigation\", où une nouvelle session démarre après 30 minutes d'inactivité, sans durée de session fixe. Quel type de fenêtre convient ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Tumbling window", "fr": "Fenêtre tumbling" } },
+        { "id": "b", "label": { "en": "Hopping window", "fr": "Fenêtre hopping" } },
+        { "id": "c", "label": { "en": "Session window", "fr": "Fenêtre de session" } },
+        { "id": "d", "label": { "en": "No windowing needed", "fr": "Aucun fenêtrage nécessaire" } }
+      ],
+      "answerId": "c",
+      "explanation": {
+        "en": "Session windows are exactly designed for this: dynamically sized, grouping activity by an inactivity gap rather than a fixed clock interval.",
+        "fr": "Les fenêtres de session sont précisément conçues pour ça : de taille dynamique, regroupant l'activité par un délai d'inactivité plutôt qu'un intervalle d'horloge fixe."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-late-record-grace",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A tumbling window [10:00, 10:05) has a grace period of 1 minute. A record with event time 10:04:50 arrives at 10:06:30 (processing time). What happens?",
+        "fr": "Une fenêtre tumbling [10:00, 10:05) a une période de grâce d'1 minute. Un record avec un event time de 10:04:50 arrive à 10:06:30 (temps de traitement). Que se passe-t-il ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "It is included: it arrives within the grace period (before 10:06) relative to the window's end", "fr": "Il est inclus : il arrive dans la période de grâce (avant 10:06) par rapport à la fin de la fenêtre" } },
+        { "id": "b", "label": { "en": "It is dropped: it arrives after the grace period (10:06) has elapsed", "fr": "Il est écarté : il arrive après l'écoulement de la période de grâce (10:06)" } },
+        { "id": "c", "label": { "en": "It creates a brand new window", "fr": "Il crée une toute nouvelle fenêtre" } },
+        { "id": "d", "label": { "en": "It is always included regardless of grace period", "fr": "Il est toujours inclus, quelle que soit la période de grâce" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "The window ends at 10:05, and the grace period extends acceptance until 10:06. The record arrives at 10:06:30, 30 seconds past that cutoff, so it is dropped despite having a valid event time within the window.",
+        "fr": "La fenêtre se termine à 10:05, et la période de grâce prolonge l'acceptation jusqu'à 10:06. Le record arrive à 10:06:30, 30 secondes après cette limite, donc il est écarté malgré un event time valide à l'intérieur de la fenêtre."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-ktable-collapses-events",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team wants to audit every individual price change for a product, but their topology reads the topic as a KTable and writes it straight to a sink. The audit log ends up missing most intermediate price changes. Find the bug.",
+        "fr": "Une équipe veut auditer chaque changement de prix individuel d'un produit, mais leur topologie lit le topic comme une KTable et l'écrit directement vers un sink. Le journal d'audit finit par manquer la plupart des changements de prix intermédiaires. Trouvez le bug."
+      },
+      "code": "KTable<String, Double> prices = builder.table(\"product-prices\");\nprices.toStream().to(\"price-audit-log\");",
+      "choices": [
+        { "id": "a", "label": { "en": "toStream() should not be called before to()", "fr": "toStream() ne devrait pas être appelé avant to()" } },
+        { "id": "b", "label": { "en": "Reading the topic as a KTable already collapses history to the latest value per key; rapid successive changes to the same product key can be reduced to one update before the stream ever sees them", "fr": "Lire le topic comme une KTable écrase déjà l'historique à la dernière valeur par clé ; des changements successifs rapides sur le même produit peuvent être réduits à une seule mise à jour avant même que le stream ne les voie" } },
+        { "id": "c", "label": { "en": "The source topic must be compacted for this to work correctly", "fr": "Le topic source doit être compacté pour que cela fonctionne correctement" } },
+        { "id": "d", "label": { "en": "There is no bug, this is the correct pattern for an audit log", "fr": "Il n'y a pas de bug, c'est le bon schéma pour un journal d'audit" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "A KTable's cache and its very nature as \"latest value per key\" mean intermediate updates can be collapsed before toStream() ever emits them. An audit log needing every individual event should read the source as a KStream directly, not go through a KTable first.",
+        "fr": "Le cache d'une KTable, et sa nature même de \"dernière valeur par clé\", font que des mises à jour intermédiaires peuvent être écrasées avant même que toStream() ne les émette. Un journal d'audit ayant besoin de chaque événement individuel devrait lire la source directement comme un KStream, sans passer par une KTable."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-join-type",
+      "kind": "mcq",
+      "prompt": {
+        "en": "You need to enrich each incoming order event with the customer's current tier from a customers table, using the order's customer id. Which join is appropriate?",
+        "fr": "Vous devez enrichir chaque événement de commande entrant avec le tier courant du client issu d'une table clients, via l'identifiant client de la commande. Quelle jointure convient ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "A windowed KStream-KStream join", "fr": "Une jointure KStream-KStream fenêtrée" } },
+        { "id": "b", "label": { "en": "A KStream-KTable join", "fr": "Une jointure KStream-KTable" } },
+        { "id": "c", "label": { "en": "A KTable-KTable join", "fr": "Une jointure KTable-KTable" } },
+        { "id": "d", "label": { "en": "No join is needed", "fr": "Aucune jointure n'est nécessaire" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Enriching a stream of events with the current value of some reference data by key is the textbook KStream-KTable lookup join: non-windowed, joined against the table's latest value at the moment each order arrives.",
+        "fr": "Enrichir un stream d'événements avec la valeur courante d'une donnée de référence par clé est le cas d'école de la jointure lookup KStream-KTable : non fenêtrée, jointe à la dernière valeur de la table au moment où chaque commande arrive."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-standby-failover",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A stateful Kafka Streams application runs with num.standby.replicas=1. One instance crashes. What happens to the partitions it owned?",
+        "fr": "Une application Kafka Streams avec état tourne avec num.standby.replicas=1. Une instance crashe. Que se passe-t-il pour les partitions qu'elle possédait ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "They are lost until the crashed instance restarts", "fr": "Elles sont perdues jusqu'au redémarrage de l'instance crashée" } },
+        { "id": "b", "label": { "en": "A standby instance, already warmed up from the changelog, takes over quickly instead of rebuilding state from scratch", "fr": "Une instance standby, déjà réchauffée depuis le changelog, prend le relais rapidement au lieu de reconstruire l'état depuis zéro" } },
+        { "id": "c", "label": { "en": "The whole application shuts down", "fr": "L'application entière s'arrête" } },
+        { "id": "d", "label": { "en": "The affected partitions stop being processed permanently", "fr": "Les partitions concernées arrêtent d'être traitées définitivement" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "That is the entire point of standby replicas: they continuously replay the changelog on another instance, so on failover the takeover is near-instant instead of paying for a full changelog replay.",
+        "fr": "C'est tout l'intérêt des standby replicas : ils rejouent en continu le changelog sur une autre instance, donc lors de la bascule la reprise est quasi instantanée au lieu de payer le coût d'une relecture complète du changelog."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-unbounded-stream-join",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A developer tries to join two KStreams of click and impression events without specifying a JoinWindows argument, expecting to match every click to its impression regardless of how far apart in time they arrive. The build fails to compile / the API refuses this. Find the bug in their expectation.",
+        "fr": "Un développeur essaie de joindre deux KStreams d'événements de clic et d'impression sans préciser d'argument JoinWindows, en s'attendant à faire correspondre chaque clic à son impression peu importe l'écart de temps entre les deux. La compilation échoue / l'API refuse. Trouvez le bug dans son attente."
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "KStream-KStream joins require a window because neither side has a \"current value\" to look up; joining without bounding the time range would require keeping unbounded state forever", "fr": "Les jointures KStream-KStream requièrent une fenêtre car aucun des deux côtés n'a de \"valeur courante\" à consulter ; joindre sans borner la plage de temps nécessiterait de garder un état non borné indéfiniment" } },
+        { "id": "b", "label": { "en": "KStream-KStream joins are not supported at all in Kafka Streams", "fr": "Les jointures KStream-KStream ne sont pas du tout supportées dans Kafka Streams" } },
+        { "id": "c", "label": { "en": "The streams should be converted to KTables first, which removes the need for a window", "fr": "Les streams devraient d'abord être convertis en KTables, ce qui supprime le besoin d'une fenêtre" } },
+        { "id": "d", "label": { "en": "This is just a syntax error unrelated to windowing", "fr": "C'est juste une erreur de syntaxe sans rapport avec le fenêtrage" } }
+      ],
+      "answerId": "a",
+      "explanation": {
+        "en": "Two event streams have no persistent \"latest state\" to look up against, unlike a table. Without a window bounding how far apart in time two records can be to still match, the join would need to retain every record from both sides forever, which is why Kafka Streams requires an explicit JoinWindows.",
+        "fr": "Deux streams d'événements n'ont pas d'\"état courant\" persistant à consulter, contrairement à une table. Sans fenêtre bornant l'écart de temps maximal entre deux records pour qu'ils puissent encore correspondre, la jointure devrait conserver indéfiniment chaque record des deux côtés, ce qui explique pourquoi Kafka Streams exige un JoinWindows explicite."
+      },
+      "difficulty": 3
+    }
+  ]
+}

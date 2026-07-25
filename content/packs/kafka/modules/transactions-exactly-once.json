@@ -1,0 +1,340 @@
+{
+  "id": "transactions-exactly-once",
+  "title": { "en": "Transactions & exactly-once", "fr": "Transactions & exactly-once" },
+  "tagline": {
+    "en": "Transactional producer, EOS, read_committed",
+    "fr": "Producteur transactionnel, EOS, read_committed"
+  },
+  "icon": "🔁",
+  "lessons": [
+    {
+      "id": "transactional-producer",
+      "title": { "en": "The transactional producer", "fr": "Le producteur transactionnel" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Setting transactional.id turns a producer transactional: it can wrap several sends, possibly across multiple partitions and topics, inside beginTransaction() / commitTransaction() (or abortTransaction()), so they all become visible together or not at all.",
+            "fr": "Définir transactional.id rend un producteur transactionnel : il peut englober plusieurs envois, éventuellement sur plusieurs partitions et topics, entre beginTransaction() et commitTransaction() (ou abortTransaction()), de sorte qu'ils deviennent tous visibles ensemble ou pas du tout."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "transactional.id also identifies the producer across restarts. On initTransactions(), the broker's transaction coordinator bumps an internal epoch for that id: any older producer instance still alive under the same id (a \"zombie\", e.g. stuck in a long GC pause) gets fenced off, its requests rejected, so two instances can never commit conflicting work under the same identity.",
+            "fr": "transactional.id identifie aussi le producteur à travers les redémarrages. Lors de initTransactions(), le coordinateur de transactions du broker incrémente une epoch interne pour cet id : toute ancienne instance de producteur encore active sous le même id (un \"zombie\", par exemple bloqué dans une longue pause GC) se fait bloquer, ses requêtes sont rejetées, si bien que deux instances ne peuvent jamais valider un travail conflictuel sous la même identité."
+          }
+        },
+        {
+          "type": "code",
+          "code": "producer.initTransactions();\ntry {\n    producer.beginTransaction();\n    producer.send(record1);\n    producer.send(record2);\n    producer.commitTransaction();\n} catch (Exception e) {\n    producer.abortTransaction();\n}",
+          "caption": {
+            "en": "record1 and record2 become visible to read_committed consumers atomically, on commit.",
+            "fr": "record1 et record2 deviennent visibles de manière atomique pour les consommateurs read_committed, au commit."
+          }
+        }
+      ]
+    },
+    {
+      "id": "eos-mechanics",
+      "title": { "en": "How exactly-once works", "fr": "Comment fonctionne exactly-once" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "A transaction is coordinated by a broker acting as transaction coordinator, tracking state in the internal __transaction_state topic. On commit, it writes a commit control message (a marker, not a regular record) to every partition the transaction touched; on abort, an abort marker instead.",
+            "fr": "Une transaction est coordonnée par un broker jouant le rôle de coordinateur de transaction, qui suit l'état dans le topic interne __transaction_state. Au commit, il écrit un message de contrôle de commit (un marqueur, pas un record ordinaire) sur chaque partition touchée par la transaction ; à l'abandon, un marqueur d'abandon à la place."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Aborting a transaction does not delete the records already written to the log: they physically remain, but the abort marker tells read_committed consumers to skip them. A read_uncommitted consumer would still see them, which is why the isolation level matters.",
+            "fr": "Abandonner une transaction ne supprime pas les records déjà écrits dans le log : ils restent physiquement présents, mais le marqueur d'abandon indique aux consommateurs read_committed de les ignorer. Un consommateur read_uncommitted les verrait quand même, d'où l'importance du niveau d'isolation."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "If a producer crashes mid-transaction, it is not left open forever: transaction.timeout.ms bounds how long the coordinator waits before aborting it automatically.",
+            "fr": "Si un producteur crashe en pleine transaction, elle n'est pas laissée ouverte indéfiniment : transaction.timeout.ms borne le temps que le coordinateur attend avant de l'abandonner automatiquement."
+          }
+        }
+      ]
+    },
+    {
+      "id": "read-committed",
+      "title": { "en": "Consumer isolation levels", "fr": "Niveaux d'isolation côté consommateur" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "isolation.level=read_uncommitted is the consumer default: records are visible as soon as they are written, whether or not their transaction (if any) ever commits. isolation.level=read_committed withholds records belonging to an open or aborted transaction until (and unless) the commit marker arrives.",
+            "fr": "isolation.level=read_uncommitted est le défaut côté consommateur : les records sont visibles dès qu'ils sont écrits, que leur transaction (s'il y en a une) valide ou non par la suite. isolation.level=read_committed retient les records appartenant à une transaction ouverte ou abandonnée jusqu'à (et à moins que) le marqueur de commit n'arrive."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "read_committed adds latency, not just filtering: a record can only be delivered once its transaction's commit marker is durably written, so a slow or stuck producer transaction stalls delivery of everything after it in that partition, not just its own records.",
+            "fr": "read_committed ajoute de la latence, pas seulement du filtrage : un record ne peut être livré qu'une fois le marqueur de commit de sa transaction écrit de façon durable, donc une transaction producteur lente ou bloquée retarde la livraison de tout ce qui la suit dans cette partition, pas seulement ses propres records."
+          }
+        }
+      ]
+    },
+    {
+      "id": "consume-transform-produce",
+      "title": { "en": "Consume-transform-produce", "fr": "Consommer-transformer-produire" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "The classic exactly-once pattern reads from an input topic, transforms, and writes to an output topic. sendOffsetsToTransaction() lets the producer include the consumer group's offset commit inside the same transaction as the output records, so \"advance the input offset\" and \"write the output\" succeed or fail together, atomically.",
+            "fr": "Le schéma exactly-once classique lit un topic d'entrée, transforme, et écrit vers un topic de sortie. sendOffsetsToTransaction() permet au producteur d'inclure la validation de l'offset du groupe de consommateurs dans la même transaction que les records de sortie, si bien que \"avancer l'offset d'entrée\" et \"écrire la sortie\" réussissent ou échouent ensemble, de façon atomique."
+          }
+        },
+        {
+          "type": "code",
+          "code": "producer.beginTransaction();\nprocessAndSend(records, producer);\nproducer.sendOffsetsToTransaction(offsets, consumerGroupMetadata);\nproducer.commitTransaction();",
+          "caption": {
+            "en": "This is exactly what Kafka Streams does internally when processing.guarantee=exactly_once_v2 is set.",
+            "fr": "C'est exactement ce que fait Kafka Streams en interne quand processing.guarantee=exactly_once_v2 est configuré."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Kafka transactions only cover Kafka topics (and, via sendOffsetsToTransaction, consumer offsets). A side effect to an external system inside the same loop, an HTTP call, a database write with no two-phase link back to Kafka, is not part of the atomic unit and can still duplicate or be skipped on retry.",
+            "fr": "Les transactions Kafka ne couvrent que les topics Kafka (et, via sendOffsetsToTransaction, les offsets de consommateur). Un effet de bord vers un système externe dans la même boucle, un appel HTTP, une écriture en base sans lien deux-phases vers Kafka, ne fait pas partie de l'unité atomique et peut donc encore se dupliquer ou être sauté lors d'une retentative."
+          }
+        }
+      ]
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "fc-transactional-id",
+      "front": { "en": "What is transactional.id used for?", "fr": "À quoi sert transactional.id ?" },
+      "back": {
+        "en": "It identifies a producer across restarts so the broker can fence off any older instance using the same id, and it enables transaction recovery.",
+        "fr": "Il identifie un producteur à travers les redémarrages afin que le broker puisse bloquer toute ancienne instance utilisant le même id, et il permet la reprise des transactions."
+      }
+    },
+    {
+      "id": "fc-fencing",
+      "front": { "en": "What is producer fencing?", "fr": "Qu'est-ce que le fencing de producteur ?" },
+      "back": {
+        "en": "When a new producer registers with an already-used transactional.id, the broker bumps its epoch and rejects requests from the old instance, so two instances can't write concurrently under the same identity.",
+        "fr": "Quand un nouveau producteur s'enregistre avec un transactional.id déjà utilisé, le broker incrémente son epoch et rejette les requêtes de l'ancienne instance, empêchant deux instances d'écrire simultanément sous la même identité."
+      }
+    },
+    {
+      "id": "fc-commit-marker",
+      "front": { "en": "What does commitTransaction() write besides the data records?", "fr": "Que commitTransaction() écrit-il en plus des records de données ?" },
+      "back": {
+        "en": "A commit control message (marker) on every partition the transaction touched.",
+        "fr": "Un message de contrôle de commit (marqueur) sur chaque partition touchée par la transaction."
+      }
+    },
+    {
+      "id": "fc-abort-behavior",
+      "front": { "en": "Does abortTransaction() delete already-written records?", "fr": "abortTransaction() supprime-t-il les records déjà écrits ?" },
+      "back": {
+        "en": "No, it writes an abort marker so read_committed consumers skip them; the records stay physically in the log.",
+        "fr": "Non, il écrit un marqueur d'abandon pour que les consommateurs read_committed les ignorent ; les records restent physiquement dans le log."
+      }
+    },
+    {
+      "id": "fc-default-isolation",
+      "front": { "en": "What is the default consumer isolation.level?", "fr": "Quel est le isolation.level par défaut côté consommateur ?" },
+      "back": {
+        "en": "read_uncommitted: records are visible immediately, regardless of their transaction's outcome.",
+        "fr": "read_uncommitted : les records sont visibles immédiatement, quel que soit le sort de leur transaction."
+      }
+    },
+    {
+      "id": "fc-read-committed-guarantee",
+      "front": { "en": "What does isolation.level=read_committed guarantee?", "fr": "Que garantit isolation.level=read_committed ?" },
+      "back": {
+        "en": "Consumers only see committed transactional records (and non-transactional ones); aborted or still-open transaction records are withheld.",
+        "fr": "Les consommateurs ne voient que les records transactionnels validés (et les non transactionnels) ; les records de transactions abandonnées ou encore ouvertes sont retenus."
+      }
+    },
+    {
+      "id": "fc-read-committed-latency",
+      "front": { "en": "What latency cost does read_committed add?", "fr": "Quel coût en latence read_committed ajoute-t-il ?" },
+      "back": {
+        "en": "Delivery waits for the commit marker; a slow or stuck transaction delays everything after it in that partition, not just its own records.",
+        "fr": "La livraison attend le marqueur de commit ; une transaction lente ou bloquée retarde tout ce qui la suit dans cette partition, pas seulement ses propres records."
+      }
+    },
+    {
+      "id": "fc-send-offsets",
+      "front": { "en": "What does sendOffsetsToTransaction() do?", "fr": "Que fait sendOffsetsToTransaction() ?" },
+      "back": {
+        "en": "It includes the consumer group's offset commit inside the same atomic transaction as the produced output records.",
+        "fr": "Il inclut la validation de l'offset du groupe de consommateurs dans la même transaction atomique que les records de sortie produits."
+      }
+    },
+    {
+      "id": "fc-multi-partition-atomic",
+      "front": { "en": "Can a transaction span multiple topics and partitions atomically?", "fr": "Une transaction peut-elle couvrir plusieurs topics et partitions de façon atomique ?" },
+      "back": {
+        "en": "Yes: either every partition it touched sees the commit marker, or every one sees the abort marker.",
+        "fr": "Oui : soit chaque partition touchée voit le marqueur de commit, soit chacune voit le marqueur d'abandon."
+      }
+    },
+    {
+      "id": "fc-transaction-timeout",
+      "front": { "en": "What happens to an open transaction if the producer crashes?", "fr": "Que devient une transaction ouverte si le producteur crashe ?" },
+      "back": {
+        "en": "It stays open until transaction.timeout.ms elapses, after which the coordinator aborts it automatically.",
+        "fr": "Elle reste ouverte jusqu'à ce que transaction.timeout.ms s'écoule, après quoi le coordinateur l'abandonne automatiquement."
+      }
+    },
+    {
+      "id": "fc-eos-scope",
+      "front": { "en": "Does Kafka's exactly-once cover external side effects like an HTTP call inside the same loop?", "fr": "L'exactly-once de Kafka couvre-t-il les effets de bord externes comme un appel HTTP dans la même boucle ?" },
+      "back": {
+        "en": "No, transactions only cover Kafka topics (and offsets via sendOffsetsToTransaction); external systems need their own coordination to stay exactly-once.",
+        "fr": "Non, les transactions ne couvrent que les topics Kafka (et les offsets via sendOffsetsToTransaction) ; les systèmes externes ont besoin de leur propre coordination pour rester exactly-once."
+      }
+    },
+    {
+      "id": "fc-transaction-state-topic",
+      "front": { "en": "Which internal topic tracks transaction state?", "fr": "Quel topic interne suit l'état des transactions ?" },
+      "back": {
+        "en": "__transaction_state, managed by a transaction coordinator broker per transactional.id.",
+        "fr": "__transaction_state, géré par un broker coordinateur de transaction par transactional.id."
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-transactional-id-purpose",
+      "kind": "mcq",
+      "prompt": {
+        "en": "What is the primary purpose of setting transactional.id on a producer?",
+        "fr": "Quel est le but premier de définir transactional.id sur un producteur ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "To increase throughput via larger batches", "fr": "Augmenter le débit via des batchs plus gros" } },
+        { "id": "b", "label": { "en": "To identify the producer across restarts so zombie instances can be fenced off, and to enable atomic multi-partition writes", "fr": "Identifier le producteur à travers les redémarrages afin de bloquer les instances zombies, et permettre des écritures atomiques multi-partitions" } },
+        { "id": "c", "label": { "en": "To choose which partition records land on", "fr": "Choisir sur quelle partition les records atterrissent" } },
+        { "id": "d", "label": { "en": "To enable compression", "fr": "Activer la compression" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "transactional.id is the identity backing both producer fencing (rejecting zombie instances) and transaction recovery/atomicity, not a performance or partitioning knob.",
+        "fr": "transactional.id est l'identité qui sous-tend à la fois le fencing du producteur (rejet des instances zombies) et la reprise/atomicité des transactions, ce n'est pas un réglage de performance ou de partitionnement."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-zombie-fencing",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A producer instance A (transactional.id=\"job-1\") stalls in a long GC pause. The orchestrator, assuming it crashed, starts a new instance B with the same transactional.id, which calls initTransactions(). A then wakes up and tries to commit a transaction it had in progress. What happens?",
+        "fr": "Une instance de producteur A (transactional.id=\"job-1\") se bloque dans une longue pause GC. L'orchestrateur, supposant qu'elle a crashé, démarre une nouvelle instance B avec le même transactional.id, qui appelle initTransactions(). A se réveille alors et tente de valider une transaction qu'elle avait en cours. Que se passe-t-il ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "A's commit succeeds normally, alongside B's writes", "fr": "Le commit de A réussit normalement, en parallèle des écritures de B" } },
+        { "id": "b", "label": { "en": "A's commit is rejected: initTransactions() from B bumped the epoch, fencing A off as a zombie", "fr": "Le commit de A est rejeté : initTransactions() de B a incrémenté l'epoch, mettant A hors jeu en tant que zombie" } },
+        { "id": "c", "label": { "en": "Both A and B are shut down by the broker", "fr": "A et B sont tous deux arrêtés par le broker" } },
+        { "id": "d", "label": { "en": "The topic is locked until manually resolved", "fr": "Le topic est verrouillé jusqu'à résolution manuelle" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "This is exactly what fencing prevents: B's initTransactions() call bumps the producer epoch for transactional.id \"job-1\", so any request from A carrying the old epoch is rejected, preventing A and B from both committing under the same identity.",
+        "fr": "C'est exactement ce que le fencing empêche : l'appel initTransactions() de B incrémente l'epoch du producteur pour transactional.id \"job-1\", donc toute requête de A portant l'ancienne epoch est rejetée, empêchant A et B de valider tous les deux sous la même identité."
+      },
+      "difficulty": 3
+    },
+    {
+      "id": "ex-external-side-effect",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team wraps a Kafka Streams-style transform in a Kafka transaction and calls an external payment API inside the same block, expecting the whole thing to be exactly-once. On retry after a crash, the payment API is sometimes called twice. Find the bug.",
+        "fr": "Une équipe englobe une transformation façon Kafka Streams dans une transaction Kafka et appelle une API de paiement externe dans le même bloc, en s'attendant à ce que tout soit exactly-once. Lors d'une retentative après crash, l'API de paiement est parfois appelée deux fois. Trouvez le bug."
+      },
+      "code": "producer.beginTransaction();\ncallPaymentApi(order); // external HTTP call\nproducer.send(outputRecord);\nproducer.sendOffsetsToTransaction(offsets, groupMetadata);\nproducer.commitTransaction();",
+      "choices": [
+        { "id": "a", "label": { "en": "sendOffsetsToTransaction should be called before send()", "fr": "sendOffsetsToTransaction devrait être appelé avant send()" } },
+        { "id": "b", "label": { "en": "Kafka transactions only make Kafka writes (records and offsets) atomic; the external HTTP call has no such guarantee and can run again on retry after a crash", "fr": "Les transactions Kafka ne rendent atomiques que les écritures Kafka (records et offsets) ; l'appel HTTP externe n'a aucune garantie de ce type et peut être rejoué après un crash" } },
+        { "id": "c", "label": { "en": "abortTransaction() must be called manually after every commit", "fr": "abortTransaction() doit être appelé manuellement après chaque commit" } },
+        { "id": "d", "label": { "en": "The payment API call should happen after commitTransaction() instead", "fr": "L'appel à l'API de paiement devrait avoir lieu après commitTransaction() à la place" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "The transaction's atomicity is scoped to Kafka topics. An external side effect inside it is not rolled back or deduplicated by Kafka: a crash and retry can call the external API again even if the surrounding Kafka transaction eventually commits or aborts cleanly.",
+        "fr": "L'atomicité de la transaction est bornée aux topics Kafka. Un effet de bord externe à l'intérieur n'est ni annulé ni dédupliqué par Kafka : un crash suivi d'une retentative peut rappeler l'API externe même si la transaction Kafka englobante finit par valider ou s'abandonner proprement."
+      },
+      "difficulty": 3
+    },
+    {
+      "id": "ex-isolation-default",
+      "kind": "mcq",
+      "prompt": {
+        "en": "By default, does a Kafka consumer see records that belong to a transaction which later aborts?",
+        "fr": "Par défaut, un consommateur Kafka voit-il les records appartenant à une transaction qui s'abandonne par la suite ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Yes, because the default isolation.level is read_uncommitted", "fr": "Oui, car le isolation.level par défaut est read_uncommitted" } },
+        { "id": "b", "label": { "en": "No, because the default isolation.level is read_committed", "fr": "Non, car le isolation.level par défaut est read_committed" } },
+        { "id": "c", "label": { "en": "Only if the topic is compacted", "fr": "Seulement si le topic est compacté" } },
+        { "id": "d", "label": { "en": "Only if acks=all", "fr": "Seulement si acks=all" } }
+      ],
+      "answerId": "a",
+      "explanation": {
+        "en": "read_uncommitted is the consumer default: records are visible as soon as written, before Kafka even knows whether their transaction will commit or abort. Opting into read_committed is required to withhold them.",
+        "fr": "read_uncommitted est le défaut côté consommateur : les records sont visibles dès leur écriture, avant même que Kafka ne sache si leur transaction va valider ou s'abandonner. Il faut explicitement choisir read_committed pour les retenir."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-stuck-transaction",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A read_committed consumer is reading a partition. A producer opens a transaction, writes a record to that partition, then hangs (network partition) without committing or aborting, well past its usual round-trip time but before transaction.timeout.ms. What does the consumer see?",
+        "fr": "Un consommateur read_committed lit une partition. Un producteur ouvre une transaction, écrit un record sur cette partition, puis reste bloqué (coupure réseau) sans valider ni abandonner, bien au-delà de son temps d'aller-retour habituel mais avant transaction.timeout.ms. Que voit le consommateur ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "The record immediately, since it was already written to the log", "fr": "Le record immédiatement, puisqu'il a déjà été écrit dans le log" } },
+        { "id": "b", "label": { "en": "Nothing new from that point on in the partition, until the transaction is committed, aborted, or times out", "fr": "Plus rien de nouveau dans cette partition à partir de ce point, jusqu'à ce que la transaction valide, s'abandonne, ou expire" } },
+        { "id": "c", "label": { "en": "A random guess at whether the record will commit", "fr": "Une estimation aléatoire de la validation future du record" } },
+        { "id": "d", "label": { "en": "An immediate error from the consumer", "fr": "Une erreur immédiate côté consommateur" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "read_committed blocks delivery of everything at or after an open transaction's records in that partition until its outcome is known, so a stuck transaction stalls the consumer until it commits, aborts, or the coordinator times it out.",
+        "fr": "read_committed bloque la livraison de tout ce qui se trouve au niveau ou après les records d'une transaction ouverte dans cette partition tant que son issue n'est pas connue, donc une transaction bloquée fige le consommateur jusqu'à ce qu'elle valide, s'abandonne, ou que le coordinateur l'expire."
+      },
+      "difficulty": 3
+    },
+    {
+      "id": "ex-missing-send-offsets",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A consume-transform-produce service is meant to be exactly-once but occasionally reprocesses or skips input records after a crash. Find the bug.",
+        "fr": "Un service consommer-transformer-produire est censé être exactly-once mais retraite ou saute parfois des records d'entrée après un crash. Trouvez le bug."
+      },
+      "code": "producer.beginTransaction();\nvar output = transform(records);\nfor (var r : output) producer.send(r);\nproducer.commitTransaction();\n\nconsumer.commitSync(); // offsets committed separately, outside the transaction",
+      "choices": [
+        { "id": "a", "label": { "en": "commitSync() should be commitAsync() instead", "fr": "commitSync() devrait être commitAsync() à la place" } },
+        { "id": "b", "label": { "en": "Offsets are committed outside the transaction instead of via sendOffsetsToTransaction(), so the input offset advance and the output write are no longer atomic: a crash between them causes duplicates or gaps", "fr": "Les offsets sont validés en dehors de la transaction au lieu de passer par sendOffsetsToTransaction(), donc l'avancement de l'offset d'entrée et l'écriture de sortie ne sont plus atomiques : un crash entre les deux cause des doublons ou des trous" } },
+        { "id": "c", "label": { "en": "beginTransaction() should be called after transform()", "fr": "beginTransaction() devrait être appelé après transform()" } },
+        { "id": "d", "label": { "en": "There is no bug, offsets should always be committed by the consumer directly", "fr": "Il n'y a pas de bug, les offsets doivent toujours être validés directement par le consommateur" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Committing the consumer offset separately breaks the atomic link between reading input and writing output. If the process crashes after commitTransaction() but before consumer.commitSync(), the input records get reprocessed, causing duplicate output; sendOffsetsToTransaction() is what ties the two together atomically.",
+        "fr": "Valider l'offset du consommateur séparément casse le lien atomique entre la lecture de l'entrée et l'écriture de la sortie. Si le processus crashe après commitTransaction() mais avant consumer.commitSync(), les records d'entrée sont retraités, causant une sortie en double ; sendOffsetsToTransaction() est justement ce qui lie les deux de façon atomique."
+      },
+      "difficulty": 3
+    }
+  ]
+}

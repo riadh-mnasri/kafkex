@@ -1,0 +1,332 @@
+{
+  "id": "security",
+  "title": { "en": "Security", "fr": "Sécurité" },
+  "tagline": {
+    "en": "SASL, mTLS, ACLs, encryption in transit",
+    "fr": "SASL, mTLS, ACLs, chiffrement en transit"
+  },
+  "icon": "🔐",
+  "lessons": [
+    {
+      "id": "encryption-transit",
+      "title": { "en": "Encryption in transit", "fr": "Chiffrement en transit" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "TLS protects Kafka traffic from eavesdropping and tampering, both between clients and brokers and between brokers themselves during replication. Kafka supports multiple named listeners at once, so client-facing and inter-broker traffic can each use a different protocol (for example SASL_SSL for clients, SSL for inter-broker).",
+            "fr": "TLS protège le trafic Kafka de l'écoute et de l'altération, à la fois entre clients et brokers et entre brokers eux-mêmes pendant la réplication. Kafka supporte plusieurs listeners nommés à la fois, donc le trafic client et le trafic inter-broker peuvent chacun utiliser un protocole différent (par exemple SASL_SSL pour les clients, SSL pour l'inter-broker)."
+          }
+        },
+        {
+          "type": "code",
+          "code": "listeners=CLIENT://0.0.0.0:9093,BROKER://0.0.0.0:9094\nlistener.security.protocol.map=CLIENT:SASL_SSL,BROKER:SSL\ninter.broker.listener.name=BROKER",
+          "caption": {
+            "en": "Two independently secured listeners: clients authenticate via SASL over TLS, brokers talk to each other over plain TLS.",
+            "fr": "Deux listeners sécurisés indépendamment : les clients s'authentifient via SASL sur TLS, les brokers se parlent entre eux en TLS simple."
+          }
+        }
+      ]
+    },
+    {
+      "id": "sasl-mechanisms",
+      "title": { "en": "SASL authentication mechanisms", "fr": "Mécanismes d'authentification SASL" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "SASL/PLAIN is the simplest mechanism: a username and password checked against a configured list or an external provider. The credentials themselves travel in a form that's trivially decoded on the wire, so PLAIN must always be paired with TLS to stay safe.",
+            "fr": "SASL/PLAIN est le mécanisme le plus simple : un nom d'utilisateur et un mot de passe vérifiés contre une liste configurée ou un fournisseur externe. Les identifiants eux-mêmes circulent sous une forme trivialement décodable sur le fil, donc PLAIN doit toujours être associé à TLS pour rester sûr."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "SASL/SCRAM uses a salted challenge-response exchange: the actual password is never sent over the wire, even without TLS, making it meaningfully safer than PLAIN as a baseline, though TLS is still recommended for confidentiality of the data itself.",
+            "fr": "SASL/SCRAM utilise un échange défi-réponse salé : le mot de passe réel n'est jamais envoyé sur le fil, même sans TLS, ce qui le rend nettement plus sûr que PLAIN en base, bien que TLS reste recommandé pour la confidentialité des données elles-mêmes."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "GSSAPI (Kerberos) integrates Kafka with an existing enterprise Kerberos realm or Active Directory, giving single sign-on without separate Kafka-specific credentials. OAUTHBEARER instead authenticates via a bearer token, integrating with an OIDC/OAuth identity provider.",
+            "fr": "GSSAPI (Kerberos) intègre Kafka à un royaume Kerberos ou un Active Directory d'entreprise déjà existant, offrant du single sign-on sans identifiants spécifiques à Kafka. OAUTHBEARER authentifie à la place via un jeton porteur (bearer token), en s'intégrant à un fournisseur d'identité OIDC/OAuth."
+          }
+        }
+      ]
+    },
+    {
+      "id": "mtls",
+      "title": { "en": "Mutual TLS (mTLS)", "fr": "TLS mutuel (mTLS)" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "With mTLS, both sides present a certificate: not just the broker proving its identity to the client (ordinary TLS), but the client also proving its identity to the broker. On an SSL listener, ssl.client.auth=required enforces that clients must present a valid certificate to connect at all.",
+            "fr": "Avec mTLS, les deux parties présentent un certificat : pas seulement le broker prouvant son identité au client (TLS classique), mais aussi le client prouvant son identité au broker. Sur un listener SSL, ssl.client.auth=required impose que les clients présentent un certificat valide pour même pouvoir se connecter."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "The client's principal is then derived from the certificate's distinguished name (DN), so authorization (ACLs) can be based directly on it. This lets PKI handle both encryption and identity in one mechanism, without a separate password or token store to manage.",
+            "fr": "Le principal du client est alors dérivé du distinguished name (DN) du certificat, si bien que l'autorisation (ACLs) peut se baser directement dessus. Cela permet à la PKI de gérer à la fois le chiffrement et l'identité en un seul mécanisme, sans magasin de mots de passe ou de jetons séparé à gérer."
+          }
+        }
+      ]
+    },
+    {
+      "id": "acls",
+      "title": { "en": "Authorization via ACLs", "fr": "Autorisation via ACLs" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "A Kafka ACL rule combines a principal (who), a resource (a topic, consumer group, or the cluster itself), an operation (Read, Write, Create, Describe, ...) and an effect (allow or deny), matched against every request the authorizer sees.",
+            "fr": "Une règle ACL Kafka combine un principal (qui), une ressource (un topic, un groupe de consommateurs, ou le cluster lui-même), une opération (Read, Write, Create, Describe, ...) et un effet (allow ou deny), comparée à chaque requête vue par l'autorisateur."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "A resource pattern can be literal (an exact name match) or prefixed (matching any resource name starting with the given prefix), which is convenient for granting access to a whole family of topics, like \"orders-\", at once.",
+            "fr": "Un motif de ressource peut être littéral (correspondance exacte du nom) ou préfixé (correspondance de tout nom de ressource commençant par le préfixe donné), ce qui est pratique pour accorder l'accès à toute une famille de topics, comme \"orders-\", d'un coup."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Kafka authorization denies by default: a principal with no matching allow ACL is rejected, unless the discouraged allow.everyone.if.no.acl.found is enabled. A prefixed ACL is easy to over-scope by accident: a prefix of \"orders\" also matches an unrelated topic named \"orders-admin-secrets\" if that naming exists, not just the intended \"orders-eu\" and \"orders-us\".",
+            "fr": "L'autorisation Kafka refuse par défaut : un principal sans ACL allow correspondante est rejeté, sauf si le paramètre déconseillé allow.everyone.if.no.acl.found est activé. Une ACL préfixée est facile à sur-étendre par accident : un préfixe \"orders\" correspond aussi à un topic sans rapport nommé \"orders-admin-secrets\" si ce nommage existe, pas seulement aux \"orders-eu\" et \"orders-us\" visés."
+          }
+        }
+      ]
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "fc-tls-purpose",
+      "front": { "en": "What does encryption in transit protect against in Kafka?", "fr": "Contre quoi le chiffrement en transit protège-t-il dans Kafka ?" },
+      "back": {
+        "en": "Eavesdropping and tampering on the network, both client-to-broker and broker-to-broker, via TLS.",
+        "fr": "L'écoute et l'altération sur le réseau, à la fois client-vers-broker et broker-vers-broker, via TLS."
+      }
+    },
+    {
+      "id": "fc-multi-listener",
+      "front": { "en": "Can client-facing and inter-broker traffic use different security protocols?", "fr": "Le trafic client et le trafic inter-broker peuvent-ils utiliser des protocoles de sécurité différents ?" },
+      "back": {
+        "en": "Yes, via separate named listeners, each independently configured (e.g. SASL_SSL for clients, SSL for inter-broker).",
+        "fr": "Oui, via des listeners nommés séparés, chacun configuré indépendamment (par ex. SASL_SSL pour les clients, SSL pour l'inter-broker)."
+      }
+    },
+    {
+      "id": "fc-plain-risk",
+      "front": { "en": "What's the risk of SASL/PLAIN without TLS?", "fr": "Quel est le risque de SASL/PLAIN sans TLS ?" },
+      "back": {
+        "en": "Credentials travel in an easily decoded form on the wire; PLAIN should always be paired with TLS.",
+        "fr": "Les identifiants circulent sous une forme facilement décodable sur le fil ; PLAIN doit toujours être associé à TLS."
+      }
+    },
+    {
+      "id": "fc-scram-benefit",
+      "front": { "en": "Why is SASL/SCRAM considered safer than PLAIN even without TLS?", "fr": "Pourquoi SASL/SCRAM est-il considéré plus sûr que PLAIN même sans TLS ?" },
+      "back": {
+        "en": "It uses a salted challenge-response exchange that never sends the actual password over the wire.",
+        "fr": "Il utilise un échange défi-réponse salé qui n'envoie jamais le mot de passe réel sur le fil."
+      }
+    },
+    {
+      "id": "fc-gssapi-benefit",
+      "front": { "en": "What does GSSAPI/Kerberos integration give an enterprise Kafka deployment?", "fr": "Qu'apporte l'intégration GSSAPI/Kerberos à un déploiement Kafka d'entreprise ?" },
+      "back": {
+        "en": "Single sign-on via an existing Kerberos realm or Active Directory, avoiding separate Kafka-specific credentials.",
+        "fr": "Du single sign-on via un royaume Kerberos ou un Active Directory déjà existant, sans identifiants spécifiques à Kafka."
+      }
+    },
+    {
+      "id": "fc-oauthbearer-def",
+      "front": { "en": "What is OAUTHBEARER used for?", "fr": "À quoi sert OAUTHBEARER ?" },
+      "back": {
+        "en": "Token-based authentication, integrating Kafka with an OIDC/OAuth identity provider instead of managing passwords or keytabs.",
+        "fr": "L'authentification par jeton, en intégrant Kafka à un fournisseur d'identité OIDC/OAuth au lieu de gérer des mots de passe ou des keytabs."
+      }
+    },
+    {
+      "id": "fc-mtls-def",
+      "front": { "en": "What is mTLS in the Kafka context?", "fr": "Qu'est-ce que le mTLS dans le contexte Kafka ?" },
+      "back": {
+        "en": "Mutual TLS: both client and broker present certificates, and the client's identity is derived from its certificate's DN.",
+        "fr": "TLS mutuel : le client et le broker présentent tous deux des certificats, et l'identité du client est dérivée du DN de son certificat."
+      }
+    },
+    {
+      "id": "fc-client-auth-required",
+      "front": { "en": "What setting enforces client certificate authentication on an SSL listener?", "fr": "Quel réglage impose l'authentification par certificat client sur un listener SSL ?" },
+      "back": {
+        "en": "ssl.client.auth=required.",
+        "fr": "ssl.client.auth=required."
+      }
+    },
+    {
+      "id": "fc-acl-components",
+      "front": { "en": "What three things does a Kafka ACL rule combine?", "fr": "Quels trois éléments une règle ACL Kafka combine-t-elle ?" },
+      "back": {
+        "en": "A principal (who), a resource (what), and an operation (Read, Write, Create, Describe...), plus an allow/deny effect.",
+        "fr": "Un principal (qui), une ressource (quoi), et une opération (Read, Write, Create, Describe...), plus un effet allow/deny."
+      }
+    },
+    {
+      "id": "fc-literal-vs-prefixed",
+      "front": { "en": "Literal vs prefixed ACL resource patterns: what's the difference?", "fr": "Motifs de ressource ACL littéral vs préfixé : quelle est la différence ?" },
+      "back": {
+        "en": "Literal matches an exact name; prefixed matches any resource name starting with the given prefix.",
+        "fr": "Littéral correspond à un nom exact ; préfixé correspond à tout nom de ressource commençant par le préfixe donné."
+      }
+    },
+    {
+      "id": "fc-default-deny",
+      "front": { "en": "What is Kafka's default authorization behavior for a principal with no matching ACL?", "fr": "Quel est le comportement d'autorisation par défaut de Kafka pour un principal sans ACL correspondante ?" },
+      "back": {
+        "en": "Deny by default; access requires an explicit matching allow ACL.",
+        "fr": "Refus par défaut ; l'accès nécessite une ACL allow correspondante explicite."
+      }
+    },
+    {
+      "id": "fc-acls-cli-tool",
+      "front": { "en": "What command-line tool manages ACLs?", "fr": "Quel outil en ligne de commande gère les ACLs ?" },
+      "back": {
+        "en": "kafka-acls.sh.",
+        "fr": "kafka-acls.sh."
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-scram-no-tls",
+      "kind": "mcq",
+      "prompt": {
+        "en": "Which SASL mechanism avoids sending the actual password over the wire, even if TLS is somehow misconfigured or absent?",
+        "fr": "Quel mécanisme SASL évite d'envoyer le mot de passe réel sur le fil, même si TLS est mal configuré ou absent ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "PLAIN", "fr": "PLAIN" } },
+        { "id": "b", "label": { "en": "SCRAM", "fr": "SCRAM" } },
+        { "id": "c", "label": { "en": "Neither, both send the password in clear text", "fr": "Aucun des deux, tous deux envoient le mot de passe en clair" } },
+        { "id": "d", "label": { "en": "It depends on the client library, not the mechanism", "fr": "Cela dépend de la bibliothèque cliente, pas du mécanisme" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "SCRAM's salted challenge-response never transmits the password itself, only proof of knowledge of it, unlike PLAIN which sends the credentials in an easily decoded form.",
+        "fr": "Le défi-réponse salé de SCRAM ne transmet jamais le mot de passe lui-même, seulement une preuve de sa connaissance, contrairement à PLAIN qui envoie les identifiants sous une forme facilement décodable."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-plain-without-tls",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team enables SASL/PLAIN authentication on their Kafka listener, reasoning \"clients now need a username and password, so we're secure\", but leaves the listener as SASL_PLAINTEXT (no TLS). A security review flags this as a critical finding. Find the bug.",
+        "fr": "Une équipe active l'authentification SASL/PLAIN sur son listener Kafka, en se disant \"les clients ont maintenant besoin d'un nom d'utilisateur et d'un mot de passe, donc on est sécurisés\", mais laisse le listener en SASL_PLAINTEXT (sans TLS). Une revue de sécurité signale cela comme critique. Trouvez le bug."
+      },
+      "code": "listener.security.protocol.map=CLIENT:SASL_PLAINTEXT\nsasl.mechanism.inter.broker.protocol=PLAIN",
+      "choices": [
+        { "id": "a", "label": { "en": "PLAIN requires Kerberos to work at all, this config is simply invalid", "fr": "PLAIN requiert Kerberos pour fonctionner, cette config est tout simplement invalide" } },
+        { "id": "b", "label": { "en": "SASL/PLAIN sends credentials in an easily decoded form; without TLS (SASL_SSL instead of SASL_PLAINTEXT), anyone on the network path can capture usernames and passwords", "fr": "SASL/PLAIN envoie les identifiants sous une forme facilement décodable ; sans TLS (SASL_SSL au lieu de SASL_PLAINTEXT), quiconque sur le chemin réseau peut capturer noms d'utilisateur et mots de passe" } },
+        { "id": "c", "label": { "en": "The mechanism should be OAUTHBEARER instead, PLAIN cannot be secured under any configuration", "fr": "Le mécanisme devrait être OAUTHBEARER à la place, PLAIN ne peut être sécurisé sous aucune configuration" } },
+        { "id": "d", "label": { "en": "There is no bug, authentication alone is sufficient security", "fr": "Il n'y a pas de bug, l'authentification seule est une sécurité suffisante" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Authentication (proving who you are) and encryption (hiding what's on the wire) are separate concerns. SASL/PLAIN alone authenticates but does not protect the credentials in transit, so it must run over SASL_SSL, not SASL_PLAINTEXT, to actually be safe.",
+        "fr": "L'authentification (prouver qui on est) et le chiffrement (cacher ce qui circule sur le fil) sont des préoccupations séparées. SASL/PLAIN seul authentifie mais ne protège pas les identifiants en transit, il doit donc tourner sur SASL_SSL, pas SASL_PLAINTEXT, pour être réellement sûr."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-mtls-identity-source",
+      "kind": "mcq",
+      "prompt": {
+        "en": "Under mTLS, where does Kafka derive a connecting client's principal from?",
+        "fr": "Sous mTLS, d'où Kafka dérive-t-il le principal d'un client qui se connecte ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "An HTTP header sent by the client", "fr": "Un en-tête HTTP envoyé par le client" } },
+        { "id": "b", "label": { "en": "The distinguished name (DN) of the client's certificate", "fr": "Le distinguished name (DN) du certificat du client" } },
+        { "id": "c", "label": { "en": "The client's IP address", "fr": "L'adresse IP du client" } },
+        { "id": "d", "label": { "en": "A username field configured separately from the certificate", "fr": "Un champ nom d'utilisateur configuré séparément du certificat" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "With mTLS, the client authenticates by presenting a certificate, and Kafka derives its principal from that certificate's distinguished name, letting PKI handle both encryption and identity together.",
+        "fr": "Avec mTLS, le client s'authentifie en présentant un certificat, et Kafka dérive son principal du distinguished name de ce certificat, laissant la PKI gérer ensemble chiffrement et identité."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-no-matching-acl",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A cluster has authorization enabled with default settings (allow.everyone.if.no.acl.found left at its default). A principal \"reporting-service\" tries to read from topic \"orders\", but no ACL has ever been created for it. What happens?",
+        "fr": "Un cluster a l'autorisation activée avec les réglages par défaut (allow.everyone.if.no.acl.found laissé à sa valeur par défaut). Un principal \"reporting-service\" essaie de lire le topic \"orders\", mais aucune ACL n'a jamais été créée pour lui. Que se passe-t-il ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Access is allowed by default, since no explicit deny rule exists", "fr": "L'accès est autorisé par défaut, puisqu'aucune règle deny explicite n'existe" } },
+        { "id": "b", "label": { "en": "Access is denied: Kafka's authorizer denies by default when no matching allow ACL is found", "fr": "L'accès est refusé : l'autorisateur de Kafka refuse par défaut quand aucune ACL allow correspondante n'est trouvée" } },
+        { "id": "c", "label": { "en": "The broker crashes", "fr": "Le broker crashe" } },
+        { "id": "d", "label": { "en": "Access is allowed only for Describe, denied for Read", "fr": "L'accès est autorisé seulement pour Describe, refusé pour Read" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Kafka's authorizer defaults to deny: without an explicit allow ACL matching the principal, resource and operation, the request is rejected, regardless of whether a deny rule exists.",
+        "fr": "L'autorisateur de Kafka refuse par défaut : sans ACL allow explicite correspondant au principal, à la ressource et à l'opération, la requête est rejetée, qu'une règle deny existe ou non."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-prefix-overreach",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team grants a reporting service read access with a prefixed ACL on resource pattern \"orders\", intending to cover the topics \"orders-eu\" and \"orders-us\". A later security audit finds the same service can also read an unrelated topic \"orders-admin-secrets\" that a different team created. Find the bug.",
+        "fr": "Une équipe accorde à un service de reporting un accès en lecture via une ACL préfixée sur le motif de ressource \"orders\", avec l'intention de couvrir les topics \"orders-eu\" et \"orders-us\". Un audit de sécurité ultérieur découvre que ce même service peut aussi lire un topic sans rapport \"orders-admin-secrets\" créé par une autre équipe. Trouvez le bug."
+      },
+      "code": "kafka-acls.sh --add --allow-principal User:reporting-service \\\n  --operation Read --topic orders --resource-pattern-type prefixed",
+      "choices": [
+        { "id": "a", "label": { "en": "The --operation should have been Describe instead of Read", "fr": "L'opération aurait dû être Describe au lieu de Read" } },
+        { "id": "b", "label": { "en": "A prefixed ACL on \"orders\" matches every resource name starting with those letters, including unrelated topics like \"orders-admin-secrets\"; the prefix was broader than the intended \"orders-eu\"/\"orders-us\" scope", "fr": "Une ACL préfixée sur \"orders\" correspond à tout nom de ressource commençant par ces lettres, y compris des topics sans rapport comme \"orders-admin-secrets\" ; le préfixe était plus large que la portée visée \"orders-eu\"/\"orders-us\"" } },
+        { "id": "c", "label": { "en": "Prefixed ACLs cannot be used with the Read operation", "fr": "Les ACLs préfixées ne peuvent pas être utilisées avec l'opération Read" } },
+        { "id": "d", "label": { "en": "This is expected behavior and not actually a security issue", "fr": "C'est un comportement attendu et ce n'est pas réellement un problème de sécurité" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "A prefix match is purely string-based: \"orders\" matches anything starting with those characters, regardless of intent. Naming topics with a clear, consistent separator (like \"orders.eu\", \"orders.us\" with a prefix of \"orders.\") or using literal ACLs per topic avoids this kind of accidental over-scoping.",
+        "fr": "Une correspondance de préfixe est purement textuelle : \"orders\" correspond à tout ce qui commence par ces caractères, indépendamment de l'intention. Nommer les topics avec un séparateur clair et cohérent (comme \"orders.eu\", \"orders.us\" avec un préfixe \"orders.\") ou utiliser des ACLs littérales par topic évite ce type de sur-étendue accidentelle."
+      },
+      "difficulty": 3
+    },
+    {
+      "id": "ex-oauthbearer-use-case",
+      "kind": "mcq",
+      "prompt": {
+        "en": "A company wants Kafka client authentication to integrate with their existing OIDC identity provider, using short-lived tokens instead of long-lived passwords or Kerberos keytabs. Which SASL mechanism fits?",
+        "fr": "Une entreprise veut que l'authentification des clients Kafka s'intègre à son fournisseur d'identité OIDC existant, avec des jetons de courte durée plutôt que des mots de passe ou des keytabs Kerberos de longue durée. Quel mécanisme SASL convient ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "PLAIN", "fr": "PLAIN" } },
+        { "id": "b", "label": { "en": "GSSAPI", "fr": "GSSAPI" } },
+        { "id": "c", "label": { "en": "OAUTHBEARER", "fr": "OAUTHBEARER" } },
+        { "id": "d", "label": { "en": "SCRAM", "fr": "SCRAM" } }
+      ],
+      "answerId": "c",
+      "explanation": {
+        "en": "OAUTHBEARER is exactly built for token-based authentication against an OIDC/OAuth provider, fitting short-lived tokens rather than static credentials or a Kerberos realm.",
+        "fr": "OAUTHBEARER est précisément conçu pour l'authentification par jeton auprès d'un fournisseur OIDC/OAuth, adapté à des jetons de courte durée plutôt qu'à des identifiants statiques ou un royaume Kerberos."
+      },
+      "difficulty": 1
+    }
+  ]
+}

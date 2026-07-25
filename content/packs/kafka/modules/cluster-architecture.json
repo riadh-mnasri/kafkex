@@ -1,0 +1,329 @@
+{
+  "id": "cluster-architecture",
+  "title": { "en": "Cluster architecture", "fr": "Architecture du cluster" },
+  "tagline": {
+    "en": "KRaft controller quorum, metadata log, replication protocol",
+    "fr": "Quorum de contrôleurs KRaft, log de métadonnées, protocole de réplication"
+  },
+  "icon": "🏗️",
+  "lessons": [
+    {
+      "id": "kraft-overview",
+      "title": { "en": "KRaft overview", "fr": "Vue d'ensemble de KRaft" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Since Kafka 4.0, ZooKeeper is gone entirely. Cluster metadata (topics, partitions, ACLs, configs, broker registrations) is managed by a controller quorum using the Raft consensus protocol, known as KRaft, with metadata stored as an event log in the internal __cluster_metadata topic, replicated across controllers.",
+            "fr": "Depuis Kafka 4.0, ZooKeeper a complètement disparu. Les métadonnées du cluster (topics, partitions, ACLs, configurations, enregistrements de brokers) sont gérées par un quorum de contrôleurs utilisant le protocole de consensus Raft, appelé KRaft, avec les métadonnées stockées comme un log d'événements dans le topic interne __cluster_metadata, répliqué entre les contrôleurs."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "At any time, one controller is the active one (the Raft leader for the metadata log); the others are standby followers. Brokers do not talk to ZooKeeper at all anymore: they fetch metadata log updates from the active controller and replay them locally, much like a consumer replaying a topic to build up state.",
+            "fr": "À tout instant, un seul contrôleur est actif (le leader Raft du log de métadonnées) ; les autres sont des followers en attente. Les brokers ne parlent plus du tout à ZooKeeper : ils récupèrent les mises à jour du log de métadonnées auprès du contrôleur actif et les rejouent localement, un peu comme un consommateur rejoue un topic pour construire son état."
+          }
+        }
+      ]
+    },
+    {
+      "id": "controller-quorum",
+      "title": { "en": "Controller quorum & election", "fr": "Quorum de contrôleurs & élection" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "controller.quorum.voters configures the fixed set of controller nodes forming the Raft quorum, each identified by id and address. An odd number, 3 or 5 in practice, is recommended: Raft needs a strict majority to elect a leader and commit metadata entries, and an odd count avoids tie votes while still tolerating some node failures.",
+            "fr": "controller.quorum.voters configure l'ensemble fixe de nœuds contrôleurs formant le quorum Raft, chacun identifié par un id et une adresse. Un nombre impair, 3 ou 5 en pratique, est recommandé : Raft a besoin d'une majorité stricte pour élire un leader et valider des entrées de métadonnées, et un compte impair évite les votes à égalité tout en tolérant certaines pannes de nœuds."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "KRaft supports two deployment shapes: combined mode, where a process plays both broker and controller roles at once, and isolated mode, where controllers run as a dedicated pool of nodes separate from the brokers.",
+            "fr": "KRaft supporte deux formes de déploiement : le mode combiné, où un process joue à la fois les rôles broker et contrôleur, et le mode isolé, où les contrôleurs tournent sur un pool dédié de nœuds, séparé des brokers."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Combined mode is convenient for small clusters and development, but on a large or heavily loaded production cluster it means controller work (metadata processing, quorum replication) competes for CPU, disk and network with regular broker traffic; isolated mode with dedicated controller nodes avoids that contention.",
+            "fr": "Le mode combiné est pratique pour les petits clusters et le développement, mais sur un cluster de production important ou fortement chargé, cela signifie que le travail de contrôleur (traitement des métadonnées, réplication du quorum) entre en concurrence pour le CPU, le disque et le réseau avec le trafic broker classique ; le mode isolé avec des nœuds contrôleurs dédiés évite cette contention."
+          }
+        }
+      ]
+    },
+    {
+      "id": "metadata-log",
+      "title": { "en": "The metadata log", "fr": "Le log de métadonnées" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Every cluster-level change, creating a topic, reassigning a partition, updating an ACL, changing a config, is appended as an event to __cluster_metadata. Brokers and controllers replay this log to build and maintain an in-memory metadata cache, rather than querying some external store on demand.",
+            "fr": "Chaque changement au niveau du cluster, créer un topic, réassigner une partition, mettre à jour une ACL, changer une configuration, est ajouté comme un événement à __cluster_metadata. Les brokers et contrôleurs rejouent ce log pour construire et maintenir un cache de métadonnées en mémoire, plutôt que d'interroger un magasin externe à la demande."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "Snapshots of the metadata log are taken periodically so a new or restarting node doesn't have to replay the entire history from the very beginning, only the snapshot plus whatever log entries came after it, bounding recovery time.",
+            "fr": "Des snapshots du log de métadonnées sont pris périodiquement pour qu'un nœud nouveau ou redémarrant n'ait pas à rejouer tout l'historique depuis le tout début, seulement le snapshot plus les entrées de log qui ont suivi, ce qui borne le temps de reprise."
+          }
+        }
+      ]
+    },
+    {
+      "id": "why-kraft",
+      "title": { "en": "Why KRaft over ZooKeeper", "fr": "Pourquoi KRaft plutôt que ZooKeeper" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Operationally, KRaft means one system to run and secure, Kafka itself, instead of Kafka plus a separately operated ZooKeeper ensemble with its own upgrade cycle, security model and failure modes.",
+            "fr": "Sur le plan opérationnel, KRaft signifie un seul système à exploiter et sécuriser, Kafka lui-même, au lieu de Kafka plus un ensemble ZooKeeper exploité séparément avec son propre cycle de mise à jour, son propre modèle de sécurité et ses propres modes de panne."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "Controller failover is faster under KRaft: metadata is already replicated to other controllers via Raft, so a new active controller can take over almost immediately, instead of the old ZooKeeper-based controller needing to reload the entire cluster's partition state from ZooKeeper before it could start operating.",
+            "fr": "La bascule de contrôleur est plus rapide sous KRaft : les métadonnées sont déjà répliquées vers les autres contrôleurs via Raft, donc un nouveau contrôleur actif peut prendre le relais presque immédiatement, au lieu de l'ancien contrôleur basé sur ZooKeeper qui devait recharger l'intégralité de l'état des partitions du cluster depuis ZooKeeper avant de pouvoir fonctionner."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "KRaft also raises the practical ceiling on partition counts a cluster can support: ZooKeeper had known limits around metadata size and read load at very large scale, which the event-log-based KRaft design was built to avoid.",
+            "fr": "KRaft relève aussi le plafond pratique du nombre de partitions qu'un cluster peut supporter : ZooKeeper avait des limites connues autour de la taille des métadonnées et de la charge de lecture à très grande échelle, que la conception de KRaft basée sur un log d'événements a été pensée pour éviter."
+          }
+        }
+      ]
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "fc-kraft-replaces",
+      "front": { "en": "What replaced ZooKeeper starting with Kafka 4.0?", "fr": "Qu'est-ce qui a remplacé ZooKeeper à partir de Kafka 4.0 ?" },
+      "back": {
+        "en": "KRaft: a controller quorum using the Raft consensus protocol.",
+        "fr": "KRaft : un quorum de contrôleurs utilisant le protocole de consensus Raft."
+      }
+    },
+    {
+      "id": "fc-active-controller",
+      "front": { "en": "How many controllers actively lead the metadata log at once?", "fr": "Combien de contrôleurs dirigent activement le log de métadonnées à la fois ?" },
+      "back": {
+        "en": "One (the Raft leader); the others are standby followers ready to take over.",
+        "fr": "Un seul (le leader Raft) ; les autres sont des followers en attente prêts à prendre le relais."
+      }
+    },
+    {
+      "id": "fc-metadata-topic-name",
+      "front": { "en": "What internal topic holds Kafka's cluster metadata under KRaft?", "fr": "Quel topic interne contient les métadonnées du cluster Kafka sous KRaft ?" },
+      "back": {
+        "en": "__cluster_metadata.",
+        "fr": "__cluster_metadata."
+      }
+    },
+    {
+      "id": "fc-odd-controller-count",
+      "front": { "en": "Why is an odd number of controllers (3 or 5) recommended?", "fr": "Pourquoi un nombre impair de contrôleurs (3 ou 5) est-il recommandé ?" },
+      "back": {
+        "en": "Raft needs a strict majority to elect a leader and commit entries; an odd count avoids tie votes while tolerating some failures.",
+        "fr": "Raft a besoin d'une majorité stricte pour élire un leader et valider des entrées ; un compte impair évite les votes à égalité tout en tolérant certaines pannes."
+      }
+    },
+    {
+      "id": "fc-quorum-voters-config",
+      "front": { "en": "What does controller.quorum.voters configure?", "fr": "Que configure controller.quorum.voters ?" },
+      "back": {
+        "en": "The fixed set of controller nodes in the Raft quorum, identified by id and address.",
+        "fr": "L'ensemble fixe des nœuds contrôleurs du quorum Raft, identifiés par id et adresse."
+      }
+    },
+    {
+      "id": "fc-combined-vs-isolated",
+      "front": { "en": "Combined vs isolated KRaft deployment mode: what's the difference?", "fr": "Mode de déploiement KRaft combiné vs isolé : quelle est la différence ?" },
+      "back": {
+        "en": "Combined runs broker and controller roles on the same process; isolated runs controllers as a dedicated pool separate from brokers.",
+        "fr": "Combiné fait tourner les rôles broker et contrôleur sur le même process ; isolé fait tourner les contrôleurs sur un pool dédié, séparé des brokers."
+      }
+    },
+    {
+      "id": "fc-broker-metadata-source",
+      "front": { "en": "How do brokers learn about cluster metadata changes under KRaft?", "fr": "Comment les brokers apprennent-ils les changements de métadonnées du cluster sous KRaft ?" },
+      "back": {
+        "en": "They fetch metadata log updates from the active controller and replay them locally to build an in-memory cache.",
+        "fr": "Ils récupèrent les mises à jour du log de métadonnées auprès du contrôleur actif et les rejouent localement pour construire un cache en mémoire."
+      }
+    },
+    {
+      "id": "fc-metadata-snapshots",
+      "front": { "en": "Why does Kafka periodically snapshot the metadata log?", "fr": "Pourquoi Kafka prend-il périodiquement des snapshots du log de métadonnées ?" },
+      "back": {
+        "en": "So a new or restarting node replays only the snapshot plus recent entries, instead of the entire history, bounding recovery time.",
+        "fr": "Pour qu'un nœud nouveau ou redémarrant ne rejoue que le snapshot plus les entrées récentes, au lieu de tout l'historique, ce qui borne le temps de reprise."
+      }
+    },
+    {
+      "id": "fc-kraft-failover-speed",
+      "front": { "en": "Why is controller failover faster under KRaft than the old ZooKeeper-based controller?", "fr": "Pourquoi la bascule de contrôleur est-elle plus rapide sous KRaft que l'ancien contrôleur basé sur ZooKeeper ?" },
+      "back": {
+        "en": "Metadata is already replicated to other controllers via Raft, so a new leader can take over almost immediately instead of reloading state from ZooKeeper.",
+        "fr": "Les métadonnées sont déjà répliquées vers les autres contrôleurs via Raft, donc un nouveau leader peut prendre le relais presque immédiatement au lieu de recharger l'état depuis ZooKeeper."
+      }
+    },
+    {
+      "id": "fc-kraft-scalability",
+      "front": { "en": "What scalability advantage does KRaft have over ZooKeeper?", "fr": "Quel avantage de scalabilité KRaft a-t-il sur ZooKeeper ?" },
+      "back": {
+        "en": "Higher practical partition count ceilings, avoiding ZooKeeper's known limits around metadata size and read load.",
+        "fr": "Des plafonds pratiques de nombre de partitions plus élevés, en évitant les limites connues de ZooKeeper autour de la taille des métadonnées et de la charge de lecture."
+      }
+    },
+    {
+      "id": "fc-single-system-operate",
+      "front": { "en": "Does KRaft require running a separate ensemble alongside Kafka?", "fr": "KRaft nécessite-t-il d'exploiter un ensemble séparé en plus de Kafka ?" },
+      "back": {
+        "en": "No, that's a key benefit: a single system to operate and secure instead of Kafka plus a separate ZooKeeper ensemble.",
+        "fr": "Non, c'est un avantage clé : un seul système à exploiter et sécuriser au lieu de Kafka plus un ensemble ZooKeeper séparé."
+      }
+    },
+    {
+      "id": "fc-combined-mode-large-clusters",
+      "front": { "en": "Is combined mode generally recommended for large, heavily loaded production clusters?", "fr": "Le mode combiné est-il en général recommandé pour de gros clusters de production fortement chargés ?" },
+      "back": {
+        "en": "No: controller work would compete with broker workload for resources; isolated mode with dedicated controller nodes is preferred.",
+        "fr": "Non : le travail de contrôleur entrerait en concurrence avec la charge broker pour les ressources ; le mode isolé avec des nœuds contrôleurs dédiés est préféré."
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-quorum-size",
+      "kind": "mcq",
+      "prompt": {
+        "en": "You are sizing a KRaft controller quorum for a production cluster that should tolerate one controller failure without losing the ability to elect a new leader. Which controller count is appropriate?",
+        "fr": "Vous dimensionnez un quorum de contrôleurs KRaft pour un cluster de production qui doit tolérer la panne d'un contrôleur sans perdre la capacité d'élire un nouveau leader. Quel nombre de contrôleurs convient ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "1", "fr": "1" } },
+        { "id": "b", "label": { "en": "2", "fr": "2" } },
+        { "id": "c", "label": { "en": "3", "fr": "3" } },
+        { "id": "d", "label": { "en": "4", "fr": "4" } }
+      ],
+      "answerId": "c",
+      "explanation": {
+        "en": "3 controllers tolerate one failure while keeping a majority (2 of 3) available to elect a leader; 1 has no redundancy, 2 and 4 are even counts that risk tie votes without necessarily buying more real fault tolerance.",
+        "fr": "3 contrôleurs tolèrent une panne tout en gardant une majorité (2 sur 3) disponible pour élire un leader ; 1 n'a aucune redondance, 2 et 4 sont des comptes pairs qui risquent des votes à égalité sans forcément apporter plus de vraie tolérance aux pannes."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-controller-crash-majority",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A KRaft cluster has 5 controllers. 2 of them crash simultaneously. What happens to the cluster's ability to process metadata changes?",
+        "fr": "Un cluster KRaft a 5 contrôleurs. 2 d'entre eux crashent simultanément. Que devient la capacité du cluster à traiter les changements de métadonnées ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "The cluster stops accepting metadata changes entirely, since any failure halts KRaft", "fr": "Le cluster arrête complètement d'accepter des changements de métadonnées, car toute panne arrête KRaft" } },
+        { "id": "b", "label": { "en": "It keeps working normally: 3 of 5 controllers is still a majority, sufficient to elect a leader and commit metadata log entries", "fr": "Il continue de fonctionner normalement : 3 contrôleurs sur 5 restent une majorité, suffisante pour élire un leader et valider des entrées du log de métadonnées" } },
+        { "id": "c", "label": { "en": "The cluster switches back to ZooKeeper automatically", "fr": "Le cluster repasse automatiquement à ZooKeeper" } },
+        { "id": "d", "label": { "en": "Brokers stop serving client traffic entirely", "fr": "Les brokers arrêtent entièrement de servir le trafic client" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "This is exactly the resilience an odd-sized quorum buys: with 5 controllers, a majority of 3 is enough to keep electing a leader and committing metadata changes even after losing 2 nodes.",
+        "fr": "C'est exactement la résilience qu'un quorum de taille impaire apporte : avec 5 contrôleurs, une majorité de 3 suffit pour continuer à élire un leader et valider des changements de métadonnées même après la perte de 2 nœuds."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-even-controller-count",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team configures controller.quorum.voters with exactly 2 controller nodes, reasoning \"2 is redundant enough, and cheaper than 3\". Find the bug in this reasoning.",
+        "fr": "Une équipe configure controller.quorum.voters avec exactement 2 nœuds contrôleurs, en se disant \"2, c'est assez redondant, et moins cher que 3\". Trouvez le bug dans ce raisonnement."
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "2 controllers is actually more fault tolerant than 3", "fr": "2 contrôleurs, c'est en réalité plus tolérant aux pannes que 3" } },
+        { "id": "b", "label": { "en": "With 2 controllers, losing even one leaves a single node, unable to form a majority on its own for Raft's leader election and commit protocol; the setup effectively has zero fault tolerance despite looking redundant", "fr": "Avec 2 contrôleurs, la perte d'un seul en laisse un seul, incapable de former une majorité à lui seul pour l'élection de leader et le protocole de validation de Raft ; le montage n'a en pratique aucune tolérance aux pannes malgré son apparence redondante" } },
+        { "id": "c", "label": { "en": "controller.quorum.voters does not accept an even number of entries", "fr": "controller.quorum.voters n'accepte pas un nombre pair d'entrées" } },
+        { "id": "d", "label": { "en": "There is no bug, 2 controllers is a standard production setup", "fr": "Il n'y a pas de bug, 2 contrôleurs est un montage de production standard" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Raft's majority requirement means an even quorum size buys no extra safety over the next odd number down: with 2 controllers, any single failure leaves 1, which cannot form the majority needed to keep electing leaders and committing entries. 3 is the minimum that actually tolerates one failure.",
+        "fr": "L'exigence de majorité de Raft fait qu'une taille de quorum paire n'apporte aucune sécurité supplémentaire par rapport au nombre impair immédiatement inférieur : avec 2 contrôleurs, toute panne unique en laisse 1, incapable de former la majorité nécessaire pour continuer à élire des leaders et valider des entrées. 3 est le minimum qui tolère réellement une panne."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-metadata-content-mcq",
+      "kind": "mcq",
+      "prompt": {
+        "en": "Which of these is stored as an event in the __cluster_metadata log under KRaft?",
+        "fr": "Lequel de ces éléments est stocké comme un événement dans le log __cluster_metadata sous KRaft ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "The actual message payloads produced to application topics", "fr": "Les payloads de messages réels produits vers les topics applicatifs" } },
+        { "id": "b", "label": { "en": "Consumer group offsets", "fr": "Les offsets de groupes de consommateurs" } },
+        { "id": "c", "label": { "en": "Topic creation, partition reassignment, ACL changes and config changes", "fr": "La création de topics, le réassignement de partitions, les changements d'ACL et de configuration" } },
+        { "id": "d", "label": { "en": "Producer batch buffers", "fr": "Les buffers de batch des producteurs" } }
+      ],
+      "answerId": "c",
+      "explanation": {
+        "en": "__cluster_metadata records cluster-level control-plane changes; application data lives in regular topics, and consumer offsets live in the separate __consumer_offsets topic.",
+        "fr": "__cluster_metadata enregistre les changements du plan de contrôle au niveau du cluster ; les données applicatives vivent dans des topics classiques, et les offsets de consommateurs vivent dans le topic séparé __consumer_offsets."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-new-broker-catchup",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A brand new broker joins an existing KRaft cluster with a long metadata history. What does it do before it can start serving partition traffic reliably?",
+        "fr": "Un nouveau broker rejoint un cluster KRaft existant avec un long historique de métadonnées. Que fait-il avant de pouvoir servir du trafic de partition de façon fiable ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "It queries ZooKeeper directly for the current state", "fr": "Il interroge directement ZooKeeper pour l'état courant" } },
+        { "id": "b", "label": { "en": "It loads the latest metadata snapshot and replays the remaining log entries from the active controller to build its metadata cache", "fr": "Il charge le dernier snapshot de métadonnées et rejoue les entrées de log restantes depuis le contrôleur actif pour construire son cache de métadonnées" } },
+        { "id": "c", "label": { "en": "It starts serving traffic immediately with an empty metadata cache", "fr": "Il commence à servir du trafic immédiatement avec un cache de métadonnées vide" } },
+        { "id": "d", "label": { "en": "It waits for a human operator to manually copy the metadata", "fr": "Il attend qu'un opérateur humain copie manuellement les métadonnées" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "This is exactly what periodic snapshots are for: the new broker starts from the latest snapshot instead of the very beginning of history, then replays only the log entries since that snapshot to catch up to the current cluster state.",
+        "fr": "C'est exactement à cela que servent les snapshots périodiques : le nouveau broker part du dernier snapshot au lieu du tout début de l'historique, puis ne rejoue que les entrées de log depuis ce snapshot pour rattraper l'état courant du cluster."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-combined-mode-contention",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A team runs a large, high-throughput production cluster entirely in combined KRaft mode (every node is both broker and controller) to \"save on infrastructure\". During a period of heavy partition reassignment, client-facing latency spikes noticeably. Find the bug.",
+        "fr": "Une équipe fait tourner un gros cluster de production à fort débit entièrement en mode KRaft combiné (chaque nœud est à la fois broker et contrôleur) pour \"économiser de l'infrastructure\". Pendant une période de réassignement massif de partitions, la latence côté client grimpe nettement. Trouvez le bug."
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "Combined mode is not a real feature and this scenario is impossible", "fr": "Le mode combiné n'est pas une vraie fonctionnalité et ce scénario est impossible" } },
+        { "id": "b", "label": { "en": "In combined mode, controller work (processing the heavy metadata churn from reassignment) shares CPU, disk and network with regular broker traffic on the same nodes, so a metadata-heavy period directly degrades client-facing performance; isolated controller nodes would avoid this", "fr": "En mode combiné, le travail de contrôleur (traiter le fort volume de métadonnées du réassignement) partage CPU, disque et réseau avec le trafic broker classique sur les mêmes nœuds, donc une période chargée en métadonnées dégrade directement les performances côté client ; des nœuds contrôleurs isolés éviteraient cela" } },
+        { "id": "c", "label": { "en": "The fix is to add more partitions", "fr": "Le correctif est d'ajouter plus de partitions" } },
+        { "id": "d", "label": { "en": "This has nothing to do with KRaft deployment mode", "fr": "Cela n'a rien à voir avec le mode de déploiement KRaft" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "This is precisely the tradeoff combined mode makes: it's simpler and cheaper for small setups, but on a large, busy cluster, controller work and broker work compete for the same node resources. Isolated mode, with controllers on their own dedicated nodes, is the standard recommendation once load gets heavy.",
+        "fr": "C'est précisément le compromis que fait le mode combiné : plus simple et moins cher pour de petits montages, mais sur un gros cluster chargé, le travail de contrôleur et le travail de broker entrent en concurrence pour les mêmes ressources de nœud. Le mode isolé, avec des contrôleurs sur leurs propres nœuds dédiés, est la recommandation standard une fois la charge élevée."
+      },
+      "difficulty": 2
+    }
+  ]
+}

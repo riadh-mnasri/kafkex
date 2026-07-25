@@ -1,0 +1,353 @@
+{
+  "id": "consumers",
+  "title": { "en": "Consumers", "fr": "Consommateurs" },
+  "tagline": {
+    "en": "Groups, offsets, rebalancing, delivery semantics",
+    "fr": "Groupes, offsets, rebalancing, sémantiques de livraison"
+  },
+  "icon": "📥",
+  "lessons": [
+    {
+      "id": "consumer-groups",
+      "title": { "en": "Consumer groups & assignment", "fr": "Groupes de consommateurs & assignation" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "A consumer group, identified by group.id, is Kafka's unit of parallel consumption: within a group, each partition is assigned to at most one consumer at a time, so the group as a whole processes a topic's partitions in parallel without any two members reading the same partition.",
+            "fr": "Un groupe de consommateurs, identifié par group.id, est l'unité de consommation parallèle de Kafka : au sein d'un groupe, chaque partition est assignée à au plus un consommateur à la fois, si bien que le groupe traite en parallèle les partitions d'un topic sans que deux membres ne lisent jamais la même partition."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Consumer parallelism inside a group is capped by the partition count: with 4 partitions and 6 consumers in the group, 2 consumers stay idle. Scaling consumers beyond partitions does nothing until you add partitions.",
+            "fr": "Le parallélisme des consommateurs au sein d'un groupe est plafonné par le nombre de partitions : avec 4 partitions et 6 consommateurs dans le groupe, 2 consommateurs restent inactifs. Ajouter des consommateurs au-delà du nombre de partitions ne sert à rien tant qu'on n'ajoute pas de partitions."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "Multiple consumer groups can independently read the same topic in full: group membership only affects sharing of work within a group, not visibility across groups. This is how Kafka supports both queue-like (one group) and pub/sub-like (many groups) consumption of the same data.",
+            "fr": "Plusieurs groupes de consommateurs peuvent lire indépendamment et intégralement le même topic : l'appartenance à un groupe n'affecte que le partage du travail à l'intérieur du groupe, pas la visibilité entre groupes. C'est ainsi que Kafka permet à la fois une consommation en file (un seul groupe) et en publication/abonnement (plusieurs groupes) sur les mêmes données."
+          }
+        }
+      ]
+    },
+    {
+      "id": "offsets-commits",
+      "title": { "en": "Offsets & commit strategies", "fr": "Offsets & stratégies de commit" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "Committed offsets live in the internal, compacted __consumer_offsets topic (unless the app manages them externally). A commit records, per (group, topic, partition), the next offset the group should read on resume, not the last offset read.",
+            "fr": "Les offsets validés vivent dans le topic interne compacté __consumer_offsets (sauf si l'application les gère elle-même en externe). Un commit enregistre, par (groupe, topic, partition), le prochain offset que le groupe doit lire à la reprise, pas le dernier offset lu."
+          }
+        },
+        {
+          "type": "code",
+          "code": "enable.auto.commit=true\nauto.commit.interval.ms=5000",
+          "caption": {
+            "en": "Default: offsets are committed on a timer, in the background, independent of whether the app has finished processing the records covered by that commit.",
+            "fr": "Par défaut : les offsets sont validés sur une minuterie, en arrière-plan, indépendamment du fait que l'application ait fini de traiter les records couverts par ce commit."
+          }
+        },
+        {
+          "type": "gotcha",
+          "body": {
+            "en": "Auto-commit can silently lose data: if the interval fires and commits an offset for records that are still being processed, then the app crashes before finishing, those records are never retried on restart, because the group's saved position already skipped past them.",
+            "fr": "L'auto-commit peut perdre des données silencieusement : si l'intervalle se déclenche et valide un offset pour des records encore en cours de traitement, puis que l'application crashe avant de finir, ces records ne sont jamais retentés au redémarrage, car la position sauvegardée du groupe les a déjà dépassés."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "commitSync() blocks until the broker confirms the commit, retrying retriable errors, so the caller knows for certain whether it landed. commitAsync() returns immediately with a callback and deliberately does not retry on its own, to avoid an old retry overwriting a newer commit that already succeeded.",
+            "fr": "commitSync() bloque jusqu'à ce que le broker confirme le commit, en retentant les erreurs récupérables, si bien que l'appelant sait avec certitude s'il a abouti. commitAsync() rend la main immédiatement avec un callback et ne retente délibérément pas lui-même, pour éviter qu'une ancienne retentative n'écrase un commit plus récent déjà réussi."
+          }
+        }
+      ]
+    },
+    {
+      "id": "rebalancing",
+      "title": { "en": "Rebalancing", "fr": "Rebalancing" },
+      "minutes": 4,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "A rebalance reassigns partitions among group members. It is triggered whenever membership changes (a consumer joins, leaves, crashes past session.timeout.ms) or the set of partitions being consumed changes (topic partition count grows, subscribed topics change).",
+            "fr": "Un rebalance réassigne les partitions entre les membres du groupe. Il est déclenché à chaque changement de composition (un consommateur rejoint, quitte, ou crashe au-delà de session.timeout.ms) ou à chaque changement de l'ensemble des partitions consommées (le nombre de partitions du topic augmente, les topics souscrits changent)."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "Eager rebalancing (the historical default, RangeAssignor/RoundRobinAssignor) revokes every partition from every member before reassigning: a full stop-the-world pause for the whole group. Cooperative (incremental) rebalancing, via CooperativeStickyAssignor, only revokes and reassigns the partitions that actually need to move, letting unaffected consumers keep processing throughout.",
+            "fr": "Le rebalancing eager (l'ancien comportement par défaut, RangeAssignor/RoundRobinAssignor) révoque toutes les partitions de tous les membres avant de réassigner : une pause complète pour tout le groupe. Le rebalancing coopératif (incrémental), via CooperativeStickyAssignor, ne révoque et ne réassigne que les partitions qui doivent réellement bouger, laissant les consommateurs non concernés continuer à traiter pendant ce temps."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "Setting group.instance.id makes a consumer a static member: on a quick restart (rolling deploy) within session.timeout.ms, it rejoins with the same identity and keeps its assignment, avoiding a rebalance entirely instead of triggering one on every pod restart.",
+            "fr": "Définir group.instance.id fait d'un consommateur un membre statique : lors d'un redémarrage rapide (déploiement rolling) dans la fenêtre session.timeout.ms, il rejoint avec la même identité et conserve son assignation, évitant totalement un rebalance au lieu d'en déclencher un à chaque redémarrage de pod."
+          }
+        }
+      ]
+    },
+    {
+      "id": "delivery-semantics",
+      "title": { "en": "Delivery semantics", "fr": "Sémantiques de livraison" },
+      "minutes": 3,
+      "blocks": [
+        {
+          "type": "text",
+          "body": {
+            "en": "At-most-once: commit the offset before processing the record. A crash after the commit but before (or during) processing silently drops that record; it is never redelivered because the group's position already moved past it.",
+            "fr": "At-most-once : valider l'offset avant de traiter le record. Un crash après le commit mais avant (ou pendant) le traitement supprime silencieusement ce record ; il n'est jamais redistribué car la position du groupe l'a déjà dépassé."
+          }
+        },
+        {
+          "type": "text",
+          "body": {
+            "en": "At-least-once: process the record first, commit the offset afterward. A crash before the commit causes the record to be redelivered on restart, so the app may see it twice, but never zero times. This is the default and most common mode; it pushes the duplicate-handling problem to the consumer (idempotent processing or dedup keys).",
+            "fr": "At-least-once : traiter le record d'abord, valider l'offset ensuite. Un crash avant le commit fait que le record est redistribué au redémarrage, donc l'application peut le voir deux fois, mais jamais zéro fois. C'est le mode par défaut et le plus courant ; il déplace le problème des doublons vers le consommateur (traitement idempotent ou clés de déduplication)."
+          }
+        },
+        {
+          "type": "tip",
+          "body": {
+            "en": "True exactly-once end to end needs the transactional producer plus isolation.level=read_committed on downstream consumers, tying the offset commit and the output write into one atomic transaction. Covered in the transactions module.",
+            "fr": "Un exactly-once véritable de bout en bout nécessite le producteur transactionnel plus isolation.level=read_committed côté consommateurs en aval, liant la validation de l'offset et l'écriture de sortie dans une seule transaction atomique. Couvert dans le module transactions."
+          }
+        }
+      ]
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "fc-group-id",
+      "front": { "en": "What does a consumer's group.id determine?", "fr": "Que détermine le group.id d'un consommateur ?" },
+      "back": {
+        "en": "Its consumer group; within a group, each partition is assigned to at most one member at a time.",
+        "fr": "Son groupe de consommateurs ; au sein d'un groupe, chaque partition est assignée à au plus un membre à la fois."
+      }
+    },
+    {
+      "id": "fc-idle-consumers",
+      "front": { "en": "What happens with more consumers in a group than partitions?", "fr": "Que se passe-t-il avec plus de consommateurs dans un groupe que de partitions ?" },
+      "back": {
+        "en": "The extra consumers stay idle: a partition can only be assigned to one consumer per group.",
+        "fr": "Les consommateurs en trop restent inactifs : une partition ne peut être assignée qu'à un seul consommateur par groupe."
+      }
+    },
+    {
+      "id": "fc-offsets-storage",
+      "front": { "en": "Where does Kafka store committed offsets by default?", "fr": "Où Kafka stocke-t-il les offsets validés par défaut ?" },
+      "back": {
+        "en": "In the internal, compacted __consumer_offsets topic.",
+        "fr": "Dans le topic interne compacté __consumer_offsets."
+      }
+    },
+    {
+      "id": "fc-auto-commit-risk",
+      "front": { "en": "What is the main risk of enable.auto.commit=true?", "fr": "Quel est le principal risque de enable.auto.commit=true ?" },
+      "back": {
+        "en": "It can commit an offset for records still being processed; a crash right after silently skips them on restart.",
+        "fr": "Il peut valider un offset pour des records encore en cours de traitement ; un crash juste après les fait sauter silencieusement au redémarrage."
+      }
+    },
+    {
+      "id": "fc-commit-sync-vs-async",
+      "front": { "en": "commitSync() vs commitAsync(): what's the key difference?", "fr": "commitSync() vs commitAsync() : quelle est la différence clé ?" },
+      "back": {
+        "en": "commitSync() blocks and retries until success or a fatal error; commitAsync() returns immediately and deliberately does not retry, to avoid overwriting a newer commit.",
+        "fr": "commitSync() bloque et retente jusqu'au succès ou une erreur fatale ; commitAsync() rend la main immédiatement et ne retente délibérément pas, pour éviter d'écraser un commit plus récent."
+      }
+    },
+    {
+      "id": "fc-rebalance-triggers",
+      "front": { "en": "What triggers a rebalance?", "fr": "Qu'est-ce qui déclenche un rebalance ?" },
+      "back": {
+        "en": "A member joining or leaving the group, or a change in the set of partitions being consumed.",
+        "fr": "Un membre qui rejoint ou quitte le groupe, ou un changement de l'ensemble des partitions consommées."
+      }
+    },
+    {
+      "id": "fc-eager-vs-cooperative",
+      "front": { "en": "Eager vs cooperative rebalancing: what's the difference?", "fr": "Rebalancing eager vs coopératif : quelle est la différence ?" },
+      "back": {
+        "en": "Eager revokes all partitions from all members before reassigning (stop-the-world); cooperative only moves the partitions that actually need to change owner.",
+        "fr": "Eager révoque toutes les partitions de tous les membres avant de réassigner (pause générale) ; coopératif ne déplace que les partitions qui doivent réellement changer de propriétaire."
+      }
+    },
+    {
+      "id": "fc-default-assignor",
+      "front": { "en": "What is the modern default partition assignor?", "fr": "Quel est l'assignor de partitions par défaut moderne ?" },
+      "back": {
+        "en": "CooperativeStickyAssignor, using incremental cooperative rebalancing.",
+        "fr": "CooperativeStickyAssignor, avec un rebalancing coopératif incrémental."
+      }
+    },
+    {
+      "id": "fc-static-membership",
+      "front": { "en": "What does group.instance.id (static membership) avoid?", "fr": "Qu'évite group.instance.id (adhésion statique) ?" },
+      "back": {
+        "en": "A rebalance on a quick consumer restart: it rejoins with the same identity within session.timeout.ms and keeps its assignment.",
+        "fr": "Un rebalance lors d'un redémarrage rapide du consommateur : il rejoint avec la même identité dans la fenêtre session.timeout.ms et conserve son assignation."
+      }
+    },
+    {
+      "id": "fc-at-least-once",
+      "front": { "en": "What is at-least-once consumption?", "fr": "Qu'est-ce que la consommation at-least-once ?" },
+      "back": {
+        "en": "Process the record, then commit the offset; a crash before the commit causes redelivery, so duplicates are possible but never silent loss.",
+        "fr": "Traiter le record, puis valider l'offset ; un crash avant le commit provoque une redistribution, donc des doublons sont possibles mais jamais de perte silencieuse."
+      }
+    },
+    {
+      "id": "fc-at-most-once",
+      "front": { "en": "What is at-most-once consumption?", "fr": "Qu'est-ce que la consommation at-most-once ?" },
+      "back": {
+        "en": "Commit the offset, then process the record; a crash after the commit but before processing silently drops it, never causing duplicates.",
+        "fr": "Valider l'offset, puis traiter le record ; un crash après le commit mais avant le traitement le supprime silencieusement, sans jamais causer de doublons."
+      }
+    },
+    {
+      "id": "fc-multiple-groups",
+      "front": { "en": "Can two consumer groups both read all records of the same topic?", "fr": "Deux groupes de consommateurs peuvent-ils tous les deux lire tous les records du même topic ?" },
+      "back": {
+        "en": "Yes. Sharing of work only happens within a group; different groups see the full topic independently.",
+        "fr": "Oui. Le partage du travail n'a lieu qu'à l'intérieur d'un groupe ; des groupes différents voient le topic en entier, indépendamment."
+      }
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-idle-count",
+      "kind": "mcq",
+      "prompt": {
+        "en": "A topic has 4 partitions. A consumer group has 6 members, all subscribed to it. How many members stay idle?",
+        "fr": "Un topic a 4 partitions. Un groupe de consommateurs a 6 membres, tous souscrits à ce topic. Combien de membres restent inactifs ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "0", "fr": "0" } },
+        { "id": "b", "label": { "en": "2", "fr": "2" } },
+        { "id": "c", "label": { "en": "4", "fr": "4" } },
+        { "id": "d", "label": { "en": "6", "fr": "6" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Only one member can own a given partition at a time within a group, so at most 4 of the 6 members get an assignment; the other 2 sit idle until a partition frees up or more partitions are added.",
+        "fr": "Un seul membre peut posséder une partition donnée à la fois au sein d'un groupe, donc au plus 4 des 6 membres obtiennent une assignation ; les 2 autres restent inactifs jusqu'à ce qu'une partition se libère ou que d'autres partitions soient ajoutées."
+      },
+      "difficulty": 1
+    },
+    {
+      "id": "ex-autocommit-loss",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "A service processes records one by one in a loop, each taking a few seconds, with default auto-commit settings. Occasionally, after a crash and restart, some records are simply never seen again. Find the bug.",
+        "fr": "Un service traite des records un par un dans une boucle, chacun prenant quelques secondes, avec les réglages d'auto-commit par défaut. De temps en temps, après un crash et un redémarrage, certains records ne sont tout simplement plus jamais revus. Trouvez le bug."
+      },
+      "code": "enable.auto.commit=true\nauto.commit.interval.ms=5000\n\nwhile (true) {\n    var records = consumer.poll(Duration.ofMillis(500));\n    for (var record : records) {\n        process(record); // can take several seconds\n    }\n}",
+      "choices": [
+        { "id": "a", "label": { "en": "poll() is called too often", "fr": "poll() est appelé trop souvent" } },
+        { "id": "b", "label": { "en": "auto-commit fires on a timer regardless of processing progress; if it commits past a record still mid-processing and the app then crashes, that record is skipped on restart", "fr": "l'auto-commit se déclenche sur une minuterie indépendamment de la progression du traitement ; s'il valide au-delà d'un record encore en cours de traitement et que l'application crashe ensuite, ce record est sauté au redémarrage" } },
+        { "id": "c", "label": { "en": "process() should be called before poll()", "fr": "process() devrait être appelé avant poll()" } },
+        { "id": "d", "label": { "en": "auto.commit.interval.ms is too high and should be increased further", "fr": "auto.commit.interval.ms est trop élevé et devrait être encore augmenté" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "With slow, multi-second processing, the 5-second auto-commit timer can easily fire mid-batch, committing offsets for records not yet fully processed. The fix is manual commits after processing (commitSync/commitAsync), not tuning the auto-commit interval.",
+        "fr": "Avec un traitement lent, de plusieurs secondes, la minuterie d'auto-commit de 5 secondes peut facilement se déclencher en plein milieu d'un batch, validant des offsets pour des records pas encore complètement traités. Le correctif est un commit manuel après traitement (commitSync/commitAsync), pas un réglage de l'intervalle d'auto-commit."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-cooperative-assignor",
+      "kind": "mcq",
+      "prompt": {
+        "en": "Which partition assignor minimizes processing pauses during a rebalance by only moving the partitions that actually need to change owner?",
+        "fr": "Quel assignor de partitions minimise les pauses de traitement lors d'un rebalance en ne déplaçant que les partitions qui doivent réellement changer de propriétaire ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "RangeAssignor", "fr": "RangeAssignor" } },
+        { "id": "b", "label": { "en": "RoundRobinAssignor", "fr": "RoundRobinAssignor" } },
+        { "id": "c", "label": { "en": "CooperativeStickyAssignor", "fr": "CooperativeStickyAssignor" } },
+        { "id": "d", "label": { "en": "All assignors behave identically during a rebalance", "fr": "Tous les assignors se comportent de manière identique lors d'un rebalance" } }
+      ],
+      "answerId": "c",
+      "explanation": {
+        "en": "CooperativeStickyAssignor uses incremental cooperative rebalancing: only the partitions that must move are revoked and reassigned, so unaffected consumers keep processing without interruption.",
+        "fr": "CooperativeStickyAssignor utilise un rebalancing coopératif incrémental : seules les partitions qui doivent bouger sont révoquées et réassignées, donc les consommateurs non concernés continuent de traiter sans interruption."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-static-membership-restart",
+      "kind": "predict-output",
+      "prompt": {
+        "en": "A consumer has group.instance.id=\"worker-3\" and session.timeout.ms=45000. It is redeployed and restarts after 8 seconds. What happens to the group?",
+        "fr": "Un consommateur a group.instance.id=\"worker-3\" et session.timeout.ms=45000. Il est redéployé et redémarre après 8 secondes. Que se passe-t-il pour le groupe ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "A full rebalance happens, since any restart triggers one", "fr": "Un rebalance complet a lieu, car tout redémarrage en déclenche un" } },
+        { "id": "b", "label": { "en": "The consumer rejoins with the same identity and its prior assignment, without triggering a rebalance, since it returned well within the session timeout", "fr": "Le consommateur rejoint avec la même identité et son assignation précédente, sans déclencher de rebalance, car il est revenu bien avant le délai de session" } },
+        { "id": "c", "label": { "en": "The consumer is permanently banned from the group", "fr": "Le consommateur est banni définitivement du groupe" } },
+        { "id": "d", "label": { "en": "Its partitions are deleted", "fr": "Ses partitions sont supprimées" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Static membership is exactly designed for this case: a fast restart within session.timeout.ms is treated as the same member returning, not a new join, so no rebalance is triggered and the assignment is preserved.",
+        "fr": "L'adhésion statique est précisément conçue pour ce cas : un redémarrage rapide dans la fenêtre session.timeout.ms est traité comme le retour du même membre, pas une nouvelle adhésion, donc aucun rebalance n'est déclenché et l'assignation est préservée."
+      },
+      "difficulty": 2
+    },
+    {
+      "id": "ex-async-shutdown-bug",
+      "kind": "find-bug",
+      "prompt": {
+        "en": "On graceful shutdown, this consumer occasionally reprocesses the last few records it already handled successfully. Find the bug.",
+        "fr": "Lors d'un arrêt propre, ce consommateur retraite parfois les derniers records qu'il avait pourtant déjà traités avec succès. Trouvez le bug."
+      },
+      "code": "// normal loop\nwhile (running) {\n    var records = consumer.poll(Duration.ofMillis(500));\n    for (var record : records) process(record);\n    consumer.commitAsync();\n}\n\n// shutdown\nconsumer.close();",
+      "choices": [
+        { "id": "a", "label": { "en": "commitAsync() should be replaced everywhere by commitSync()", "fr": "commitAsync() devrait être remplacé partout par commitSync()" } },
+        { "id": "b", "label": { "en": "The app exits without a final commitSync(): the last commitAsync() may not have completed (it does not retry) before close(), so its offset can be lost", "fr": "L'application se termine sans commitSync() final : le dernier commitAsync() peut ne pas avoir abouti (il ne retente pas) avant close(), donc son offset peut être perdu" } },
+        { "id": "c", "label": { "en": "poll() should not be called in a loop", "fr": "poll() ne devrait pas être appelé dans une boucle" } },
+        { "id": "d", "label": { "en": "There is no bug, this is the recommended shutdown pattern", "fr": "Il n'y a pas de bug, c'est le schéma d'arrêt recommandé" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "commitAsync() during the normal loop is fine (fast, non-blocking), but on shutdown you need one final commitSync() to make sure the last offset is durably committed before the process exits, since commitAsync() offers no such guarantee.",
+        "fr": "commitAsync() pendant la boucle normale est adapté (rapide, non bloquant), mais à l'arrêt il faut un dernier commitSync() pour s'assurer que le dernier offset est validé de façon durable avant que le processus ne se termine, car commitAsync() n'offre aucune garantie de ce genre."
+      },
+      "difficulty": 3
+    },
+    {
+      "id": "ex-semantics-choice",
+      "kind": "mcq",
+      "prompt": {
+        "en": "A consumer commits the offset immediately after poll(), before processing the records. Which delivery semantics does this give?",
+        "fr": "Un consommateur valide l'offset immédiatement après poll(), avant de traiter les records. Quelle sémantique de livraison cela donne-t-il ?"
+      },
+      "choices": [
+        { "id": "a", "label": { "en": "At-least-once", "fr": "At-least-once" } },
+        { "id": "b", "label": { "en": "At-most-once", "fr": "At-most-once" } },
+        { "id": "c", "label": { "en": "Exactly-once", "fr": "Exactly-once" } },
+        { "id": "d", "label": { "en": "No delivery guarantee applies", "fr": "Aucune garantie de livraison ne s'applique" } }
+      ],
+      "answerId": "b",
+      "explanation": {
+        "en": "Committing before processing means a crash between the commit and the end of processing silently drops the record: the group's position has already moved past it, so it is never redelivered. That is at-most-once.",
+        "fr": "Valider avant de traiter signifie qu'un crash entre le commit et la fin du traitement supprime silencieusement le record : la position du groupe l'a déjà dépassé, donc il n'est jamais redistribué. C'est de l'at-most-once."
+      },
+      "difficulty": 1
+    }
+  ]
+}
